@@ -1,0 +1,7 @@
+export default function PrivacyPage() {
+  return <LegalPage title="Privacy Policy" updated="June 21, 2026" sections={[["The short version","We collect only the information needed to run Voltbean, improve the product, and keep accounts secure. We do not sell personal data."],["Information we collect","Account information, saved tools, ratings, listing submissions, and basic usage analytics may be stored when you use the service."],["How we use information","We use data to provide account features, moderate listings, measure product performance, prevent abuse, and communicate service updates."],["Your choices","You may request access, correction, export, or deletion of your account data by contacting privacy@voltbean.tools."],["Security and retention","We apply reasonable technical and organizational safeguards and retain information only as long as needed for the purposes described here."],["Contact","Questions about privacy can be sent to privacy@voltbean.tools."]]} />;
+}
+
+function LegalPage({ title, updated, sections }: { title: string; updated: string; sections: [string,string][] }) {
+  return <section className="legal-page"><div className="container narrow"><span className="kicker">Legal</span><h1>{title}</h1><p className="legal-updated">Last updated {updated}</p>{sections.map(([heading,body]) => <section key={heading}><h2>{heading}</h2><p>{body}</p></section>)}</div></section>;
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title">
+  <title>24 News</title>
+  <rect width="220" height="220" rx="28" fill="#fbfbfd"/>
+  <circle cx="110" cy="98" r="76" fill="none" stroke="#ac1d13" stroke-width="7"/>
+  <path d="M110 22a76 76 0 0 1 67 40" fill="none" stroke="#ddb81a" stroke-width="7" stroke-linecap="round"/>
+  <text x="110" y="118" text-anchor="middle" font-size="84" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#14171c">24</text>
+  <rect x="52" y="128" width="116" height="24" rx="12" fill="#c22214"/>
+  <text x="110" y="146" text-anchor="middle" font-size="20" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#ffffff">TWENTY FOUR</text>
+</svg>

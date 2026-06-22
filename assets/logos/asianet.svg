@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title">
+  <title>Asianet News</title>
+  <rect width="220" height="220" rx="28" fill="#f7f8fb"/>
+  <path d="M45 160 95 48h18L63 160Z" fill="#1745d2"/>
+  <path d="M83 160 127 48h18L101 160Z" fill="#1e57f2"/>
+  <path d="M121 160 159 48h18L139 160Z" fill="#275fff"/>
+  <path d="M98 98h76l-7 16h-76Z" fill="#cf341f"/>
+  <path d="M90 124h70l-7 16H83Z" fill="#cf341f"/>
+  <text x="110" y="195" text-anchor="middle" font-size="36" font-weight="800" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#16356d">AN</text>
+</svg>

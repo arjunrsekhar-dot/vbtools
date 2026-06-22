@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title">
+  <title>MediaOne</title>
+  <rect width="220" height="220" rx="28" fill="#f8f8fb"/>
+  <text x="110" y="78" text-anchor="middle" font-size="42" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#143167">MEDIA</text>
+  <text x="110" y="146" text-anchor="middle" font-size="78" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#143167">1</text>
+  <path d="M116 104c12-18 28-26 48-26 0 0-8 56-48 74-29 13-54 1-54-25 0-17 13-35 37-35 7 0 12 1 17 4Z" fill="#173a7e"/>
+  <text x="110" y="192" text-anchor="middle" font-size="26" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#143167">ONE</text>
+</svg>

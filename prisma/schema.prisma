@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id
+  name         String
+  email        String       @unique
+  passwordHash String       @default("")
+  role         String       @default("USER")
+  status       String       @default("Active")
+  avatar       String?
+  avatarUrl    String?
+  joinedAt     DateTime     @default(now())
+  submissions Submission[]
+  tools        Tool[]       @relation("ToolOwner")
+  savedTools   SavedTool[]
+  ratings      Rating[]
+  activities   ActivityEvent[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([role])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  color       String?
+  tools       Tool[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Tool {
+  id               String    @id
+  name             String
+  slug             String    @unique
+  logo              String
+  logoColor         String
+  logoUrl           String?
+  shortDescription String
+  fullDescription  String
+  websiteUrl       String
+  affiliateUrl     String?
+  couponCode       String?
+  discountDetails  String?
+  pricingType      String
+  startingPrice    String
+  freeTrial        Boolean   @default(false)
+  bestFor          String
+  subcategory      String
+  featuresJson     String    @default("[]")
+  prosJson         String    @default("[]")
+  consJson         String    @default("[]")
+  useCasesJson     String    @default("[]")
+  platformsJson    String    @default("[]")
+  tagsJson         String    @default("[]")
+  alternativesJson String    @default("[]")
+  screenshotsJson  String    @default("[]")
+  status           String    @default("DRAFT")
+  featured         Boolean   @default(false)
+  sponsored        Boolean   @default(false)
+  verified         Boolean   @default(false)
+  rating           Float     @default(0)
+  ratingCount      Int       @default(0)
+  baseRating       Float     @default(0)
+  baseRatingCount  Int       @default(0)
+  views            Int       @default(0)
+  saves            Int       @default(0)
+  clicks           Int       @default(0)
+  isNew            Boolean   @default(false)
+  publishedAt      DateTime?
+  ownerId          String?
+  owner            User?     @relation("ToolOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  categoryId       String
+  category         Category  @relation(fields: [categoryId], references: [id])
+  submissions      Submission[]
+  savedBy          SavedTool[]
+  ratings          Rating[]
+  activities       ActivityEvent[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, featured])
+  @@index([categoryId])
+  @@index([ownerId])
+}
+
+model Submission {
+  id           String   @id
+  kind         String   @default("NEW_TOOL")
+  status       String   @default("PENDING")
+  payloadJson  String
+  reviewNotes  String?
+  submitterId  String
+  submitter    User     @relation(fields: [submitterId], references: [id], onDelete: Cascade)
+  toolId       String?
+  tool         Tool?    @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model Deal {
+  id        String   @id
+  toolName  String
+  discount  String
+  code      String
+  active    Boolean  @default(true)
+  clicks    Int      @default(0)
+  expires   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SavedTool {
+  userId    String
+  toolId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tool      Tool     @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, toolId])
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  score     Int
+  userId    String
+  toolId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tool      Tool     @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, toolId])
+  @@index([toolId])
+}
+
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  type      String
+  userId    String?
+  toolId    String?
+  metadata  String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tool      Tool?    @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([toolId, createdAt])
+  @@index([userId, createdAt])
+}

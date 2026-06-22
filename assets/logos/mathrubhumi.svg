@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title">
+  <title>Mathrubhumi News</title>
+  <rect width="220" height="220" rx="28" fill="#f8f9fb"/>
+  <rect x="38" y="34" width="144" height="144" rx="12" fill="#112d60"/>
+  <path d="M66 150V62h18l26 33 26-33h18v88h-22V98l-22 26h-1L88 98v52Z" fill="#ffffff"/>
+  <rect x="63" y="126" width="24" height="24" fill="#d94a35"/>
+  <text x="110" y="202" text-anchor="middle" font-size="20" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#1a2340">MATHRUBHUMI</text>
+</svg>

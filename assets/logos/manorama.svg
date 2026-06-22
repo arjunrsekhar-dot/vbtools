@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title">
+  <title>Manorama News</title>
+  <rect width="220" height="220" rx="28" fill="#f8f8fb"/>
+  <path d="M34 40h58l-38 64H34Z" fill="#df220d"/>
+  <path d="M92 40h44l-24 64H54Z" fill="#ffffff"/>
+  <path d="M136 40h58v64h-58l-24-32Z" fill="#256abd"/>
+  <path d="M86 104h48l-24 46Z" fill="#d9e5f8"/>
+  <path d="M134 104h52l-24 46Z" fill="#2337c5"/>
+  <rect x="48" y="168" width="124" height="18" rx="9" fill="#df220d"/>
+  <text x="110" y="204" text-anchor="middle" font-size="24" font-weight="900" font-family="Trebuchet MS, Segoe UI, sans-serif" fill="#2358b1">MANORAMA</text>
+</svg>
