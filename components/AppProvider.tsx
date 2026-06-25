@@ -3,10 +3,14 @@
 import { SessionUser } from "@/lib/types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
+type ThemeMode = "light" | "dark";
+
 type AppContextValue = {
   user: SessionUser | null;
   loadingUser: boolean;
   saved: string[];
+  theme: ThemeMode;
+  toggleTheme: () => void;
   toggleSaved: (slug: string) => void;
   isSaved: (slug: string) => boolean;
   logout: () => Promise<void>;
@@ -14,6 +18,26 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 const LEGACY_SAVED_KEY = "voltbean_saved";
+const THEME_KEY = "voltbean_theme";
+
+function readTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_KEY);
+    return storedTheme === "dark" || storedTheme === "light" ? storedTheme : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function applyTheme(theme: ThemeMode) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    window.localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Theme still applies for the current page even if persistence is unavailable.
+  }
+}
 
 function savedKey(userId: string) {
   return `voltbean_saved:${userId}`;
@@ -36,6 +60,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [saved, setSaved] = useState<string[]>([]);
+  const [theme, setTheme] = useState<ThemeMode>("light");
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -44,6 +69,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .catch(() => setUser(null))
       .finally(() => setLoadingUser(false));
   }, []);
+
+  useEffect(() => {
+    setTheme(readTheme());
+    document.documentElement.dataset.reactReady = "true";
+  }, []);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     if (loadingUser) return;
@@ -90,6 +124,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [user]);
 
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return next;
+    });
+  }, []);
+
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setSaved([]);
@@ -102,11 +144,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user,
       loadingUser,
       saved,
+      theme,
+      toggleTheme,
       toggleSaved,
       isSaved: (slug: string) => saved.includes(slug),
       logout
     }),
-    [user, loadingUser, saved, toggleSaved, logout]
+    [user, loadingUser, saved, theme, toggleTheme, toggleSaved, logout]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

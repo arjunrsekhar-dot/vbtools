@@ -7,6 +7,7 @@ import { categories } from "@/lib/tools";
 import { useApp } from "@/components/AppProvider";
 import { Turnstile } from "@/components/Turnstile";
 import { FileImagePreviews } from "@/components/ImagePreviews";
+import { LoginPrompt } from "@/components/LoginPrompt";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
@@ -29,6 +30,7 @@ export function SubmitToolForm() {
   const [screenshots, setScreenshots] = useState<File[]>([]);
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const handleCaptcha = useCallback((token: string) => {
     setCaptchaToken(token);
     if (token) {
@@ -101,7 +103,10 @@ export function SubmitToolForm() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user) { window.location.href = "/login?next=/submit"; return; }
+    if (!user) {
+      setLoginPromptOpen(true);
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const validationErrors = validate(form);
     if (Object.keys(validationErrors).length) {
@@ -137,11 +142,23 @@ export function SubmitToolForm() {
     setLoading(false);
   }
 
-  if (submitted) return (
-    <div className="submit-success"><span><CheckCircle2 size={35} /></span><h2>Your tool is in the review queue.</h2><p>We&apos;ll check the listing for quality and accuracy, usually within 2–3 business days. You can track its status from your developer dashboard.</p><Link className="button button-dark" href="/developer">Open developer dashboard</Link></div>
-  );
+  if (submitted) {
+    const dashboardHref = user?.role === "DEVELOPER" ? "/developer" : user?.role === "ADMIN" ? "/admin" : "/dashboard";
+    return (
+      <div className="submit-success"><span><CheckCircle2 size={35} /></span><h2>Your tool is in the review queue.</h2><p>We&apos;ll check the listing for quality and accuracy, usually within 2–3 business days.</p><Link className="button button-dark" href={dashboardHref}>Open dashboard</Link></div>
+    );
+  }
 
   return (
+    <>
+    {loginPromptOpen && (
+      <LoginPrompt
+        title="Log in to submit a tool"
+        message="Tool submissions are attached to your account so admins can review the listing and keep you updated."
+        next="/submit"
+        close={() => setLoginPromptOpen(false)}
+      />
+    )}
     <form className="submit-form" onSubmit={submit} noValidate>
       <div className="form-section">
         <div className="form-section-heading"><span>01</span><div><h2>The basics</h2><p>Start with the essential details people use to recognize your tool.</p></div></div>
@@ -201,5 +218,6 @@ export function SubmitToolForm() {
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="button button-dark submit-button" disabled={loading}>{loading ? "Submitting…" : "Submit for review"} <Send size={16} /></button>
     </form>
+    </>
   );
 }

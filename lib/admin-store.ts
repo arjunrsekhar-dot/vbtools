@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { AdminState, ManagedTool, QueueItem } from "@/lib/admin-data";
+import { AdminState, ManagedTool, QueueItem, ReportItem } from "@/lib/admin-data";
 
 function parseList(value?: string | null) {
   if (!value) return [];
@@ -16,8 +16,31 @@ function formatJoined(date: Date) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function parseDealExpiry(value?: string | null) {
+  if (!value || value.toLowerCase() === "no expiry") return null;
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T23:59:59`)
+    : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function dealIsExpired(expires: string) {
+  const expiresAt = parseDealExpiry(expires);
+  return Boolean(expiresAt && expiresAt.getTime() < Date.now());
+}
+
+function parseReportMetadata(value?: string | null): Partial<ReportItem> {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed as Partial<ReportItem> : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function readAdminState(): Promise<AdminState> {
-  const [submissions, tools, users, deals] = await Promise.all([
+  const [submissions, tools, users, deals, reports] = await Promise.all([
     db.submission.findMany({
       where: { status: "PENDING" },
       include: { submitter: true },
@@ -25,7 +48,12 @@ export async function readAdminState(): Promise<AdminState> {
     }),
     db.tool.findMany({ include: { category: true }, orderBy: { createdAt: "asc" } }),
     db.user.findMany({ orderBy: { joinedAt: "desc" } }),
-    db.deal.findMany({ orderBy: { createdAt: "asc" } })
+    db.deal.findMany({ orderBy: { createdAt: "asc" } }),
+    db.activityEvent.findMany({
+      where: { type: "REPORT_INCORRECT_INFO" },
+      include: { tool: true, user: true },
+      orderBy: { createdAt: "desc" }
+    })
   ]);
 
   return {
@@ -94,10 +122,26 @@ export async function readAdminState(): Promise<AdminState> {
       tool: deal.toolName,
       discount: deal.discount,
       code: deal.code,
-      active: deal.active,
+      active: dealIsExpired(deal.expires) ? false : deal.active,
       clicks: deal.clicks,
       expires: deal.expires
-    }))
+    })),
+    reports: reports.map((report) => {
+      const metadata = parseReportMetadata(report.metadata);
+      return {
+        id: report.id,
+        toolId: report.toolId || metadata.toolId || "",
+        toolName: report.tool?.name || metadata.toolName || "Unknown tool",
+        toolSlug: report.tool?.slug || metadata.toolSlug || "",
+        reporter: report.user?.name || metadata.reporter || "Guest visitor",
+        reporterEmail: report.user?.email || metadata.reporterEmail,
+        issueType: metadata.issueType || "Incorrect information",
+        details: metadata.details || "No details provided.",
+        status: metadata.status === "Resolved" ? "Resolved" : "Open",
+        submitted: report.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+        resolvedAt: metadata.resolvedAt
+      };
+    })
   };
 }
 
@@ -179,13 +223,37 @@ export async function writeAdminState(state: AdminState) {
     }
 
     for (const deal of state.deals) {
+      const active = dealIsExpired(deal.expires) ? false : deal.active;
       await tx.deal.upsert({
         where: { id: deal.id },
-        update: { toolName: deal.tool, discount: deal.discount, code: deal.code, active: deal.active, clicks: deal.clicks, expires: deal.expires },
-        create: { id: deal.id, toolName: deal.tool, discount: deal.discount, code: deal.code, active: deal.active, clicks: deal.clicks, expires: deal.expires }
+        update: { toolName: deal.tool, discount: deal.discount, code: deal.code, active, clicks: deal.clicks, expires: deal.expires },
+        create: { id: deal.id, toolName: deal.tool, discount: deal.discount, code: deal.code, active, clicks: deal.clicks, expires: deal.expires }
       });
     }
     await tx.deal.deleteMany({ where: { id: { notIn: state.deals.map((deal) => deal.id) } } });
+
+    for (const report of state.reports) {
+      const existing = await tx.activityEvent.findUnique({ where: { id: report.id } });
+      if (!existing || existing.type !== "REPORT_INCORRECT_INFO") continue;
+      const metadata = parseReportMetadata(existing.metadata);
+      await tx.activityEvent.update({
+        where: { id: report.id },
+        data: {
+          metadata: JSON.stringify({
+            ...metadata,
+            toolId: report.toolId,
+            toolName: report.toolName,
+            toolSlug: report.toolSlug,
+            reporter: report.reporter,
+            reporterEmail: report.reporterEmail,
+            issueType: report.issueType,
+            details: report.details,
+            status: report.status,
+            resolvedAt: report.status === "Resolved" ? report.resolvedAt || new Date().toISOString() : undefined
+          })
+        }
+      });
+    }
 
     for (const item of state.queue) {
       const submitter = await tx.user.findFirst({ where: { name: item.owner } })

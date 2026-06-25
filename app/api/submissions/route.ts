@@ -67,7 +67,6 @@ async function saveImage(file: File, extension: string, directory: string) {
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (user.role === "USER") return NextResponse.json({ error: "A developer account is required" }, { status: 403 });
   const form = await request.formData();
   const parsed = submissionSchema.safeParse(Object.fromEntries(
     Array.from(form.entries()).filter(([, value]) => typeof value === "string")

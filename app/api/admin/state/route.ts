@@ -36,6 +36,19 @@ const stateSchema = z.object({
   deals: z.array(z.object({
     id: z.string(), tool: z.string(), discount: z.string(), code: z.string(),
     active: z.boolean(), clicks: z.number(), expires: z.string()
+  })),
+  reports: z.array(z.object({
+    id: z.string(),
+    toolId: z.string(),
+    toolName: z.string(),
+    toolSlug: z.string(),
+    reporter: z.string(),
+    reporterEmail: z.string().email().optional(),
+    issueType: z.string(),
+    details: z.string(),
+    status: z.enum(["Open", "Resolved"]),
+    submitted: z.string(),
+    resolvedAt: z.string().optional()
   }))
 });
 

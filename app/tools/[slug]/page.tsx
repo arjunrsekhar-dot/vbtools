@@ -8,6 +8,7 @@ import { ToolCard } from "@/components/ToolCard";
 import { RatingPanel } from "@/components/RatingPanel";
 import { ToolViewTracker } from "@/components/ToolViewTracker";
 import Image from "next/image";
+import { ScreenshotSlider } from "@/components/ScreenshotSlider";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -45,9 +46,7 @@ export default async function ToolDetailPage({ params }: { params: Promise<{ slu
       <section className="detail-body">
         <div className="container detail-layout">
           <article className="detail-content">
-            {tool.screenshots?.length ? <div className="tool-screenshot-gallery">
-              {tool.screenshots.map((url, index) => <figure className={index === 0 ? "featured-shot" : ""} key={url}><Image src={url} alt={`${tool.name} screenshot ${index + 1}`} fill sizes={index === 0 ? "(max-width: 900px) 100vw, 760px" : "(max-width: 900px) 50vw, 370px"} /></figure>)}
-            </div> : <div className="screenshot-placeholder">
+            {tool.screenshots?.length ? <ScreenshotSlider name={tool.name} screenshots={tool.screenshots} /> : <div className="screenshot-placeholder">
               <div className="mock-browser-bar"><span>● ● ●</span><div>{tool.websiteUrl.replace("https://", "")}</div></div>
               <div className="mock-product">
                 <aside><div className="mock-brand" style={{ background: tool.logoColor }}>{tool.logo}</div>{[1,2,3,4,5].map((item) => <span key={item} />)}</aside>

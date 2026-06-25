@@ -3,18 +3,18 @@
 import Link from "next/link";
 import {
   ArrowRight, BadgeCheck, Ban, Boxes, Check, Clock3, Copy, Eye,
-  Filter, ImagePlus, MousePointerClick, Pencil, Plus, Search, ShieldCheck,
+  Filter, Flag, ImagePlus, MousePointerClick, Pencil, Plus, Search, ShieldCheck,
   Star, TicketPercent, Trash2, TrendingUp, UserRound, UsersRound, X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { categories, tools } from "@/lib/tools";
 import {
-  AdminState, initialAdminState, ManagedDeal, ManagedTool, ManagedUser, QueueItem
+  AdminState, initialAdminState, ManagedDeal, ManagedTool, ManagedUser, QueueItem, ReportItem
 } from "@/lib/admin-data";
 import { FileImagePreviews, StoredImagePreviews } from "@/components/ImagePreviews";
 
-type AdminSection = "overview" | "tools" | "users" | "deals" | "analytics" | "settings";
+type AdminSection = "overview" | "tools" | "reports" | "users" | "deals" | "analytics" | "settings";
 type Range = "7d" | "30d" | "90d";
 
 const chartData: Record<Range, { labels: string[]; users: number[]; views: number[]; clicks: number[] }> = {
@@ -22,6 +22,18 @@ const chartData: Record<Range, { labels: string[]; users: number[]; views: numbe
   "30d": { labels: ["May 23", "May 28", "Jun 2", "Jun 7", "Jun 12", "Jun 17", "Jun 21"], users: [980, 1210, 1170, 1490, 1660, 1810, 2040], views: [24900, 29100, 27600, 35400, 38200, 44100, 48700], clicks: [7900, 9100, 8700, 11200, 12100, 14300, 15900] },
   "90d": { labels: ["Apr 1", "Apr 15", "May 1", "May 15", "Jun 1", "Jun 10", "Jun 21"], users: [2410, 2980, 3640, 4390, 5100, 5840, 6710], views: [68200, 81300, 95600, 112400, 134800, 151600, 174300], clicks: [20100, 24700, 29300, 34800, 41100, 46900, 53800] }
 };
+
+function normalizeAdminState(state: AdminState): AdminState {
+  return {
+    ...initialAdminState,
+    ...state,
+    queue: state.queue || [],
+    tools: state.tools || [],
+    users: state.users || [],
+    deals: state.deals || [],
+    reports: state.reports || []
+  };
+}
 
 function useAdminState() {
   const [value, setValue] = useState<AdminState>(initialAdminState);
@@ -31,7 +43,7 @@ function useAdminState() {
     const cached = window.localStorage.getItem("voltbean_admin_state");
     if (cached) {
       try {
-        const parsed = JSON.parse(cached) as AdminState;
+        const parsed = normalizeAdminState(JSON.parse(cached) as AdminState);
         valueRef.current = parsed;
         setValue(parsed);
       } catch { /* fetch the server copy below */ }
@@ -40,18 +52,19 @@ function useAdminState() {
       .then((response) => response.json())
       .then((data) => {
         if (data.state) {
-          valueRef.current = data.state;
-          setValue(data.state);
-          window.localStorage.setItem("voltbean_admin_state", JSON.stringify(data.state));
+          const state = normalizeAdminState(data.state);
+          valueRef.current = state;
+          setValue(state);
+          window.localStorage.setItem("voltbean_admin_state", JSON.stringify(state));
         }
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
   }, []);
   const setRemoteValue = useCallback<React.Dispatch<React.SetStateAction<AdminState>>>((nextValue) => {
-    const next = typeof nextValue === "function"
+    const next = normalizeAdminState(typeof nextValue === "function"
       ? (nextValue as (previous: AdminState) => AdminState)(valueRef.current)
-      : nextValue;
+      : nextValue);
     valueRef.current = next;
     setValue(next);
     window.localStorage.setItem("voltbean_admin_state", JSON.stringify(next));
@@ -67,6 +80,30 @@ function useAdminState() {
 
 function formatNumber(value: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 1 : 0)}K` : String(value);
+}
+
+function parseDealExpiry(value?: string) {
+  if (!value || value.toLowerCase() === "no expiry") return null;
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T23:59:59`)
+    : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isDealExpired(deal: Pick<ManagedDeal, "expires">) {
+  const expiresAt = parseDealExpiry(deal.expires);
+  return Boolean(expiresAt && expiresAt.getTime() < Date.now());
+}
+
+function expiryInputValue(value?: string) {
+  const expiresAt = parseDealExpiry(value);
+  return expiresAt ? expiresAt.toISOString().slice(0, 10) : "";
+}
+
+function expiryDisplay(value?: string) {
+  const expiresAt = parseDealExpiry(value);
+  if (!expiresAt) return "No expiry";
+  return expiresAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function InteractiveChart({ range, metric = "views", secondary = "users" }: { range: Range; metric?: "views" | "clicks"; secondary?: "users" | "clicks" }) {
@@ -114,7 +151,7 @@ function InteractiveChart({ range, metric = "views", secondary = "users" }: { ra
 
 export function AdminDashboard({ user, section = "overview" }: { user: SessionUser; section?: AdminSection }) {
   const [adminState, setAdminState, stateReady] = useAdminState();
-  const { queue, tools: managedTools, users: managedUsers, deals } = adminState;
+  const { queue, tools: managedTools, users: managedUsers, deals, reports } = adminState;
   const setManagedTools = useCallback<React.Dispatch<React.SetStateAction<ManagedTool[]>>>((next) => {
     setAdminState((current) => ({ ...current, tools: typeof next === "function" ? next(current.tools) : next }));
   }, [setAdminState]);
@@ -123,6 +160,9 @@ export function AdminDashboard({ user, section = "overview" }: { user: SessionUs
   }, [setAdminState]);
   const setDeals = useCallback<React.Dispatch<React.SetStateAction<ManagedDeal[]>>>((next) => {
     setAdminState((current) => ({ ...current, deals: typeof next === "function" ? next(current.deals) : next }));
+  }, [setAdminState]);
+  const setReports = useCallback<React.Dispatch<React.SetStateAction<ReportItem[]>>>((next) => {
+    setAdminState((current) => ({ ...current, reports: typeof next === "function" ? next(current.reports) : next }));
   }, [setAdminState]);
   const [toast, setToast] = useState("");
   const [reviewing, setReviewing] = useState<QueueItem | null>(null);
@@ -182,8 +222,9 @@ export function AdminDashboard({ user, section = "overview" }: { user: SessionUs
   return (
     <>
       {toast && <div className="admin-toast"><Check size={15} />{toast}</div>}
-      {section === "overview" && <Overview user={user} queue={queue} action={queueAction} setReviewing={setReviewing} />}
+      {section === "overview" && <Overview user={user} queue={queue} reports={reports} action={queueAction} setReviewing={setReviewing} setReports={setReports} notify={notify} />}
       {section === "tools" && <ToolsAdmin items={managedTools} setItems={setManagedTools} notify={notify} />}
+      {section === "reports" && <ReportsAdmin items={reports} setItems={setReports} notify={notify} />}
       {section === "users" && <UsersAdmin items={managedUsers} setItems={setManagedUsers} notify={notify} />}
       {section === "deals" && <DealsAdmin items={deals} setItems={setDeals} notify={notify} />}
       {section === "analytics" && <AnalyticsAdmin />}
@@ -193,9 +234,12 @@ export function AdminDashboard({ user, section = "overview" }: { user: SessionUs
   );
 }
 
-function Overview({ user, queue, action, setReviewing }: {
-  user: SessionUser; queue: QueueItem[]; action: (id: string | number, verb: "approved" | "rejected") => void;
+function Overview({ user, queue, reports, action, setReviewing, setReports, notify }: {
+  user: SessionUser; queue: QueueItem[]; reports: ReportItem[];
+  action: (id: string | number, verb: "approved" | "rejected") => void;
   setReviewing: (item: QueueItem) => void;
+  setReports: React.Dispatch<React.SetStateAction<ReportItem[]>>;
+  notify: (message: string) => void;
 }) {
   const [range, setRange] = useState<Range>("30d");
   const data = chartData[range];
@@ -209,6 +253,11 @@ function Overview({ user, queue, action, setReviewing }: {
     views: tools.filter((tool) => tool.category === category.name).reduce((total, tool) => total + tool.views, 0)
   })).sort((a, b) => b.views - a.views).slice(0, 5);
   const maxViews = categoryStats[0].views;
+  const openReports = reports.filter((report) => report.status === "Open");
+  function resolveReport(id: string) {
+    setReports((current) => current.map((report) => report.id === id ? { ...report, status: "Resolved", resolvedAt: new Date().toISOString() } : report));
+    notify("Report marked resolved.");
+  }
   return (
     <>
       <div className="dashboard-heading"><div><span>Admin control room</span><h1>Morning, {user.name.split(" ")[0]}.</h1><p>Here&apos;s what needs attention across Voltbean today.</p></div><Link href="/submit" className="button button-dark">Add tool <ArrowRight size={16} /></Link></div>
@@ -216,6 +265,7 @@ function Overview({ user, queue, action, setReviewing }: {
         <Link href="/admin/tools"><span><Boxes /></span><div><strong>{tools.length}</strong><small>Catalog tools</small><em>+4 this month</em></div></Link>
         <Link href="/admin/users"><span><UserRound /></span><div><strong>18,294</strong><small>Users</small><em>+8.2%</em></div></Link>
         <Link href="/admin/users?role=developer"><span><UsersRound /></span><div><strong>1,126</strong><small>Developers</small><em>+42 this month</em></div></Link>
+        <Link href="/admin/reports" className={openReports.length ? "attention-stat" : ""}><span><Flag /></span><div><strong>{openReports.length}</strong><small>Open reports</small><em>{openReports.length ? "Needs review" : "All clear"}</em></div></Link>
         <div className="attention-stat"><span><Clock3 /></span><div><strong>{queue.length}</strong><small>Pending review</small><em>{queue.length ? "Needs attention" : "All clear"}</em></div></div>
       </div>
       <div className="dashboard-grid-main admin-grid">
@@ -231,6 +281,50 @@ function Overview({ user, queue, action, setReviewing }: {
       <div className="dashboard-grid-main admin-lower">
         <div className="dashboard-panel chart-panel"><div className="panel-heading"><div><h2>Growth overview</h2><p>Hover or focus a point to inspect it</p></div><select aria-label="Analytics date range" value={range} onChange={(event) => setRange(event.target.value as Range)}><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select></div><InteractiveChart range={range} /></div>
         <div className="dashboard-panel"><div className="panel-heading"><div><h2>Popular categories</h2><p>Ranked by catalog views</p></div></div><div className="category-bars">{categoryStats.map((item, index) => <div key={item.name}><span>{index + 1}</span><strong>{item.name}</strong><i><b style={{ width: `${(item.views / maxViews) * 100}%` }} /></i><small>{formatNumber(item.views)}</small></div>)}</div></div>
+      </div>
+      <div className="dashboard-panel">
+        <div className="panel-heading"><div><h2>Reported listing issues</h2><p>Incorrect-information reports submitted by visitors.</p></div><Link href="/admin/reports">View all <ArrowRight size={12} /></Link></div>
+        <div className="report-list">
+          {openReports.slice(0, 4).map((report) => <ReportRow key={report.id} report={report} resolve={resolveReport} />)}
+          {!openReports.length && <div className="queue-empty"><BadgeCheck /><strong>No open reports</strong><small>Visitor listing reports will appear here.</small></div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ReportRow({ report, resolve }: { report: ReportItem; resolve: (id: string) => void }) {
+  return (
+    <div className="report-row">
+      <span className={`report-state ${report.status.toLowerCase()}`}>{report.status}</span>
+      <div>
+        <strong>{report.toolName}</strong>
+        <small>{report.issueType} · {report.reporter} · {report.submitted}</small>
+        <p>{report.details}</p>
+      </div>
+      <Link href={report.toolSlug ? `/tools/${report.toolSlug}` : "/admin/tools"}><Eye size={14} /> View</Link>
+      {report.status === "Open" ? <button onClick={() => resolve(report.id)}><Check size={14} /> Resolve</button> : <span className="resolved-label">Resolved</span>}
+    </div>
+  );
+}
+
+function ReportsAdmin({ items, setItems, notify }: { items: ReportItem[]; setItems: React.Dispatch<React.SetStateAction<ReportItem[]>>; notify: (message: string) => void }) {
+  const [status, setStatus] = useState("Open");
+  const filtered = items.filter((item) => status === "All" || item.status === status);
+  function resolve(id: string) {
+    setItems((current) => current.map((report) => report.id === id ? { ...report, status: "Resolved", resolvedAt: new Date().toISOString() } : report));
+    notify("Report marked resolved.");
+  }
+  return (
+    <>
+      <div className="dashboard-heading"><div><span>Quality control</span><h1>Incorrect information reports</h1><p>Track, review, and resolve visitor reports for tool listings.</p></div></div>
+      <div className="stat-grid admin-section-stats"><div className="attention-stat"><span><Flag /></span><div><strong>{items.filter((item) => item.status === "Open").length}</strong><small>Open reports</small></div></div><div><span><Check /></span><div><strong>{items.filter((item) => item.status === "Resolved").length}</strong><small>Resolved</small></div></div><div><span><Boxes /></span><div><strong>{new Set(items.map((item) => item.toolId)).size}</strong><small>Reported tools</small></div></div><div><span><Clock3 /></span><div><strong>{items.length}</strong><small>Total reports</small></div></div></div>
+      <div className="dashboard-panel">
+        <div className="admin-toolbar"><label className="admin-filter"><Filter size={14} /><select aria-label="Filter reports by status" value={status} onChange={(event) => setStatus(event.target.value)}><option>Open</option><option>Resolved</option><option>All</option></select></label><span>{filtered.length} reports</span></div>
+        <div className="report-list">
+          {filtered.map((report) => <ReportRow key={report.id} report={report} resolve={resolve} />)}
+          {!filtered.length && <div className="queue-empty"><BadgeCheck /><strong>No reports found</strong><small>Try changing the status filter.</small></div>}
+        </div>
       </div>
     </>
   );
@@ -400,24 +494,75 @@ function UsersAdmin({ items, setItems, notify }: { items: ManagedUser[]; setItem
 
 function DealsAdmin({ items, setItems, notify }: { items: ManagedDeal[]; setItems: React.Dispatch<React.SetStateAction<ManagedDeal[]>>; notify: (message: string) => void }) {
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<ManagedDeal | null>(null);
   const [draft, setDraft] = useState({ tool: "", discount: "", code: "", expires: "" });
+  const normalizedItems = items.map((item) => ({ ...item, active: isDealExpired(item) ? false : item.active }));
+  const expiredCount = normalizedItems.filter(isDealExpired).length;
+  useEffect(() => {
+    const hasExpiredActiveDeal = items.some((item) => item.active && isDealExpired(item));
+    if (!hasExpiredActiveDeal) return;
+    setItems((current) => current.map((item) => isDealExpired(item) ? { ...item, active: false } : item));
+  }, [items, setItems]);
   function toggle(id: string, active: boolean, tool: string) {
+    const deal = items.find((item) => item.id === id);
+    if (active && deal && isDealExpired(deal)) {
+      notify(`${tool} is expired. Update the expiry date before activating it.`);
+      return;
+    }
     setItems((current) => current.map((item) => item.id === id ? { ...item, active } : item));
     notify(`${tool} deal ${active ? "activated" : "paused"}.`);
   }
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+    setDraft({ tool: "", discount: "", code: "", expires: "" });
+  }
+  function openEdit(deal: ManagedDeal) {
+    setEditing(deal);
+    setDraft({ tool: deal.tool, discount: deal.discount, code: deal.code, expires: expiryInputValue(deal.expires) });
+    setShowForm(true);
+  }
   function addDeal(event: React.FormEvent) {
     event.preventDefault();
-    setItems((current) => [...current, { id: crypto.randomUUID(), ...draft, active: true, clicks: 0 }]);
-    setDraft({ tool: "", discount: "", code: "", expires: "" });
-    setShowForm(false);
-    notify("New deal added.");
+    const expires = draft.expires || "No expiry";
+    const nextDeal = { ...draft, code: draft.code.toUpperCase(), expires };
+    if (editing) {
+      setItems((current) => current.map((item) => item.id === editing.id ? { ...item, ...nextDeal, active: isDealExpired(nextDeal) ? false : item.active } : item));
+      notify(`${draft.tool} deal updated.`);
+    } else {
+      setItems((current) => [...current, { id: crypto.randomUUID(), ...nextDeal, active: !isDealExpired(nextDeal), clicks: 0 }]);
+      notify("New deal added.");
+    }
+    closeForm();
+  }
+  function deleteDeal(id: string, tool: string) {
+    setItems((current) => current.filter((item) => item.id !== id));
+    notify(`${tool} deal deleted.`);
   }
   return (
     <>
-      <div className="dashboard-heading"><div><span>Revenue operations</span><h1>Deals & coupons</h1><p>Keep offers accurate, active, and easy to claim.</p></div><button className="button button-dark" onClick={() => setShowForm(true)}><Plus size={16} /> Add deal</button></div>
-      <div className="stat-grid admin-section-stats"><div><span><TicketPercent /></span><div><strong>{items.length}</strong><small>Total deals</small></div></div><div><span><Check /></span><div><strong>{items.filter((item) => item.active).length}</strong><small>Active</small></div></div><div><span><MousePointerClick /></span><div><strong>{formatNumber(items.reduce((sum, item) => sum + item.clicks, 0))}</strong><small>Deal clicks</small></div></div><div><span><TrendingUp /></span><div><strong>12.8%</strong><small>Conversion rate</small></div></div></div>
-      <div className="deals-admin-grid">{items.map((item) => <article className={`admin-deal-card ${!item.active ? "paused" : ""}`} key={item.id}><div><span className={`deal-state ${item.active ? "active" : ""}`}>{item.active ? "Active" : "Paused"}</span><button aria-label={`Toggle ${item.tool} deal`} className={`admin-switch ${item.active ? "on" : ""}`} onClick={() => toggle(item.id, !item.active, item.tool)}><i /></button></div><h2>{item.tool}</h2><p>{item.discount}</p><button className="admin-coupon" onClick={() => { navigator.clipboard.writeText(item.code); notify(`${item.code} copied.`); }}><code>{item.code}</code><Copy /></button><footer><span><MousePointerClick />{formatNumber(item.clicks)} clicks</span><span><Clock3 />{item.expires}</span></footer></article>)}</div>
-      {showForm && <div className="admin-modal-backdrop"><form className="admin-modal deal-form-modal" onSubmit={addDeal}><button type="button" className="modal-close" onClick={() => setShowForm(false)}><X /></button><span className="kicker">New promotion</span><h2>Add a software deal</h2><label><span>Tool name</span><input required value={draft.tool} onChange={(event) => setDraft({ ...draft, tool: event.target.value })} placeholder="e.g. Notion" /></label><label><span>Discount details</span><input required value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} placeholder="e.g. 20% off for 3 months" /></label><div className="modal-form-grid"><label><span>Coupon code</span><input required value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value.toUpperCase() })} /></label><label><span>Expiry</span><input required value={draft.expires} onChange={(event) => setDraft({ ...draft, expires: event.target.value })} placeholder="No expiry" /></label></div><button className="button button-dark">Create deal</button></form></div>}
+      <div className="dashboard-heading"><div><span>Revenue operations</span><h1>Deals & coupons</h1><p>Keep offers accurate, active, and automatically expired.</p></div><button className="button button-dark" onClick={() => setShowForm(true)}><Plus size={16} /> Add deal</button></div>
+      <div className="stat-grid admin-section-stats"><div><span><TicketPercent /></span><div><strong>{normalizedItems.length}</strong><small>Total deals</small></div></div><div><span><Check /></span><div><strong>{normalizedItems.filter((item) => item.active).length}</strong><small>Active</small></div></div><div className="attention-stat"><span><Clock3 /></span><div><strong>{expiredCount}</strong><small>Expired</small></div></div><div><span><MousePointerClick /></span><div><strong>{formatNumber(normalizedItems.reduce((sum, item) => sum + item.clicks, 0))}</strong><small>Deal clicks</small></div></div></div>
+      <div className="deals-admin-grid">{normalizedItems.map((item) => {
+        const expired = isDealExpired(item);
+        return (
+          <article className={`admin-deal-card ${!item.active ? "paused" : ""} ${expired ? "expired" : ""}`} key={item.id}>
+            <div>
+              <span className={`deal-state ${item.active ? "active" : ""} ${expired ? "expired" : ""}`}>{expired ? "Expired" : item.active ? "Active" : "Paused"}</span>
+              <div className="deal-card-actions">
+                <button aria-label={`Edit ${item.tool} deal`} onClick={() => openEdit(item)}><Pencil /></button>
+                <button aria-label={`Delete ${item.tool} deal`} className="danger" onClick={() => deleteDeal(item.id, item.tool)}><Trash2 /></button>
+                <button aria-label={`Toggle ${item.tool} deal`} className={`admin-switch ${item.active ? "on" : ""}`} onClick={() => toggle(item.id, !item.active, item.tool)}><i /></button>
+              </div>
+            </div>
+            <h2>{item.tool}</h2>
+            <p>{item.discount}</p>
+            <button className="admin-coupon" onClick={() => { navigator.clipboard.writeText(item.code); notify(`${item.code} copied.`); }}><code>{item.code}</code><Copy /></button>
+            <footer><span><MousePointerClick />{formatNumber(item.clicks)} clicks</span><span><Clock3 />{expiryDisplay(item.expires)}</span></footer>
+          </article>
+        );
+      })}</div>
+      {showForm && <div className="admin-modal-backdrop"><form className="admin-modal deal-form-modal" onSubmit={addDeal}><button type="button" className="modal-close" onClick={closeForm}><X /></button><span className="kicker">{editing ? "Edit promotion" : "New promotion"}</span><h2>{editing ? "Edit coupon deal" : "Add a software deal"}</h2><label><span>Tool name</span><input required value={draft.tool} onChange={(event) => setDraft({ ...draft, tool: event.target.value })} placeholder="e.g. Notion" /></label><label><span>Discount details</span><input required value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: event.target.value })} placeholder="e.g. 20% off for 3 months" /></label><div className="modal-form-grid"><label><span>Coupon code</span><input required value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value.toUpperCase() })} /></label><label><span>Expiry date <em>leave blank for none</em></span><input type="date" value={draft.expires} onChange={(event) => setDraft({ ...draft, expires: event.target.value })} /></label></div><button className="button button-dark">{editing ? "Save deal" : "Create deal"}</button></form></div>}
     </>
   );
 }

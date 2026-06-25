@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Bookmark, Boxes, ChevronRight, FilePlus2, LayoutDashboard, LogOut, Settings, ShieldCheck, TicketPercent, Users } from "lucide-react";
+import { BarChart3, Bookmark, Boxes, ChevronRight, FilePlus2, Flag, LayoutDashboard, LogOut, Settings, ShieldCheck, TicketPercent, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { SessionUser } from "@/lib/types";
 import { useApp } from "@/components/AppProvider";
@@ -13,7 +13,7 @@ export function DashboardShell({ user, children }: { user: SessionUser; children
   const isDeveloper = user.role === "DEVELOPER";
   const base = isAdmin ? "/admin" : isDeveloper ? "/developer" : "/dashboard";
   const links = isAdmin ? [
-    ["/admin", "Overview", LayoutDashboard], ["/admin/tools", "Tools", Boxes], ["/admin/users", "Users", Users], ["/admin/deals", "Deals & coupons", TicketPercent], ["/admin/analytics", "Analytics", BarChart3]
+    ["/admin", "Overview", LayoutDashboard], ["/admin/tools", "Tools", Boxes], ["/admin/reports", "Reports", Flag], ["/admin/users", "Users", Users], ["/admin/deals", "Deals & coupons", TicketPercent], ["/admin/analytics", "Analytics", BarChart3]
   ] : isDeveloper ? [
     ["/developer", "Overview", LayoutDashboard], ["/developer/listings", "My listings", Boxes], ["/submit", "Add new tool", FilePlus2], ["/developer/analytics", "Analytics", BarChart3]
   ] : [

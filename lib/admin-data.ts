@@ -30,11 +30,26 @@ export type ManagedDeal = {
   id: string; tool: string; discount: string; code: string; active: boolean; clicks: number; expires: string;
 };
 
+export type ReportItem = {
+  id: string;
+  toolId: string;
+  toolName: string;
+  toolSlug: string;
+  reporter: string;
+  reporterEmail?: string;
+  issueType: string;
+  details: string;
+  status: "Open" | "Resolved";
+  submitted: string;
+  resolvedAt?: string;
+};
+
 export type AdminState = {
   queue: QueueItem[];
   tools: ManagedTool[];
   users: ManagedUser[];
   deals: ManagedDeal[];
+  reports: ReportItem[];
 };
 
 export const initialAdminState: AdminState = {
@@ -61,5 +76,6 @@ export const initialAdminState: AdminState = {
   deals: tools.filter((tool) => tool.discount).map((tool, index) => ({
     id: tool.id, tool: tool.name, discount: tool.discount || "", code: tool.couponCode || "AUTO",
     active: true, clicks: tool.clicks, expires: index === 0 ? "Jul 31, 2026" : "No expiry"
-  }))
+  })),
+  reports: []
 };
