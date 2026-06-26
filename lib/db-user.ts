@@ -5,7 +5,7 @@ import { SessionUser } from "@/lib/types";
 export async function ensureDatabaseUser(user: SessionUser) {
   return db.user.upsert({
     where: { email: user.email },
-    update: { name: user.name, role: user.role },
+    update: { name: user.name },
     create: {
       id: user.id,
       name: user.name,

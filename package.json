@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0 -p 3333",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3333",
     "lint": "eslint .",
+    "test:security": "tsx --test tests/security.test.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts"

@@ -46,11 +46,26 @@ export async function getDeveloperDashboardData(session: SessionUser) {
       take: 20
     })
   ]);
+  const ratingAggregates = await db.rating.groupBy({
+    by: ["toolId"],
+    where: { toolId: { in: ownedTools.map((tool) => tool.id) } },
+    _avg: { score: true },
+    _count: { score: true }
+  });
+  const ratings = new Map(
+    ratingAggregates.map((item) => [
+      item.toolId,
+      { rating: item._count.score ? item._avg.score || 0 : 0, count: item._count.score }
+    ])
+  );
   const ownedIds = new Set(ownedTools.map((tool) => tool.id));
   const toolActivities = activities.filter((event) => !event.toolId || ownedIds.has(event.toolId));
-  const totalRatings = ownedTools.reduce((total, tool) => total + tool.ratingCount, 0);
+  const totalRatings = ownedTools.reduce((total, tool) => total + (ratings.get(tool.id)?.count || 0), 0);
   const averageRating = totalRatings
-    ? ownedTools.reduce((total, tool) => total + tool.rating * tool.ratingCount, 0) / totalRatings
+    ? ownedTools.reduce((total, tool) => {
+        const rating = ratings.get(tool.id);
+        return total + (rating ? rating.rating * rating.count : 0);
+      }, 0) / totalRatings
     : 0;
   const submissionRows = submissions
     .filter((submission) => !submission.toolId)
@@ -60,7 +75,7 @@ export async function getDeveloperDashboardData(session: SessionUser) {
         id: submission.id,
         name: payload.name || "Untitled tool",
         logo: payload.logo || (payload.name || "?").charAt(0),
-        color: payload.color || "#287b5e",
+        color: payload.color || "#5992C6",
         status: statusLabel(submission.status),
         views: 0,
         saves: 0,
@@ -77,7 +92,7 @@ export async function getDeveloperDashboardData(session: SessionUser) {
       status: statusLabel(tool.status),
       views: tool.views,
       saves: tool.saves,
-      rating: tool.rating,
+      rating: ratings.get(tool.id)?.rating || 0,
       updated: relativeTime(tool.updatedAt)
     })),
     ...submissionRows

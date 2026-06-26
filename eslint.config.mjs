@@ -4,11 +4,22 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const compat = new FlatCompat({ baseDirectory: __dirname });
 
-export default [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const config = [
   {
-    ignores: [".next/**", "node_modules/**", "repo_src/**"]
-  }
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "repo_src/**",
+      "next-env.d.ts",
+      "tsconfig.tsbuildinfo",
+    ],
+  },
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
+
+export default config;

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_NAME, createSessionToken } from "@/lib/auth";
+import { COOKIE_NAME, createSessionToken, getSessionUser } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { ensureDatabaseUser } from "@/lib/db-user";
+import { auditLog } from "@/lib/security";
 import {
+  GOOGLE_CONNECT_COOKIE,
   GOOGLE_NEXT_COOKIE,
   GOOGLE_STATE_COOKIE,
   GOOGLE_VERIFIER_COOKIE,
@@ -19,7 +23,7 @@ type GoogleProfile = {
 };
 
 function clearOAuthCookies(response: NextResponse) {
-  for (const name of [GOOGLE_STATE_COOKIE, GOOGLE_VERIFIER_COOKIE, GOOGLE_NEXT_COOKIE]) {
+  for (const name of [GOOGLE_STATE_COOKIE, GOOGLE_VERIFIER_COOKIE, GOOGLE_NEXT_COOKIE, GOOGLE_CONNECT_COOKIE]) {
     response.cookies.set(name, "", { httpOnly: true, expires: new Date(0), path: "/" });
   }
 }
@@ -74,17 +78,62 @@ export async function GET(request: NextRequest) {
       return authError(request, "google_email_unverified");
     }
 
+    const destination = safeNextPath(request.cookies.get(GOOGLE_NEXT_COOKIE)?.value ?? null);
+    const connect = request.cookies.get(GOOGLE_CONNECT_COOKIE)?.value === "1";
+    const currentSession = await getSessionUser();
+
+    if (connect) {
+      if (!currentSession) return authError(request, "authentication_required");
+      const currentUser = await db.user.findUnique({ where: { email: currentSession.email } });
+      if (!currentUser || currentUser.status !== "Active") return authError(request, "authentication_required");
+      const existingGoogleUser = await db.user.findFirst({
+        where: { googleId: profile.sub, id: { not: currentUser.id } }
+      });
+      if (existingGoogleUser) return authError(request, "google_already_connected");
+      if (profile.email.toLowerCase() !== currentUser.email.toLowerCase()) return authError(request, "google_email_mismatch");
+
+      await db.user.update({
+        where: { id: currentUser.id },
+        data: { googleId: profile.sub }
+      });
+      await auditLog(request, {
+        actor: {
+          id: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role as SessionUser["role"],
+          status: currentUser.status
+        },
+        action: "SOCIAL_LOGIN_CONNECT",
+        resourceType: "User",
+        resourceId: currentUser.id
+      });
+      const response = NextResponse.redirect(new URL(`${destination}?social=google_connected`, request.url));
+      clearOAuthCookies(response);
+      return response;
+    }
+
     const user: SessionUser = {
       id: `google:${profile.sub}`,
       name: profile.name?.trim() || profile.email.split("@")[0],
       email: profile.email,
       role: "USER"
     };
-    const destination = safeNextPath(request.cookies.get(GOOGLE_NEXT_COOKIE)?.value ?? null);
+    const existing = await db.user.findFirst({ where: { OR: [{ googleId: profile.sub }, { email: profile.email }] } });
+    if (existing) {
+      if (existing.status !== "Active") return authError(request, "account_disabled");
+      await db.user.update({ where: { id: existing.id }, data: { googleId: profile.sub, name: existing.name || user.name } });
+      user.id = existing.id;
+      user.name = existing.name;
+      user.role = existing.role as SessionUser["role"];
+    } else {
+      await ensureDatabaseUser(user);
+      await db.user.update({ where: { email: profile.email }, data: { googleId: profile.sub } });
+    }
     const response = NextResponse.redirect(new URL(destination, request.url));
     response.cookies.set(COOKIE_NAME, createSessionToken(user), {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 60 * 60 * 24 * 7
