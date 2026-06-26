@@ -1,12 +1,12 @@
 import { tools } from "@/lib/tools";
-import { UserRole } from "@/lib/types";
+import { Platform, UserRole } from "@/lib/types";
 
 export type QueueItem = {
   id: string | number; name: string; owner: string; category: string; submitted: string;
   logo: string; color: string; description: string; website: string; kind: string;
   fullDescription?: string; pricingType?: "Free" | "Freemium" | "Paid" | "Open Source";
   startingPrice?: string; freeTrial?: boolean; bestFor?: string; subcategory?: string;
-  tags?: string[]; logoUrl?: string | null; screenshotUrls?: string[];
+  tags?: string[]; platforms?: Platform[]; logoUrl?: string | null; screenshotUrls?: string[];
   couponCode?: string; discountDetails?: string;
 };
 
@@ -17,7 +17,7 @@ export type ManagedTool = {
   description?: string; fullDescription?: string; website?: string;
   pricingType?: "Free" | "Freemium" | "Paid" | "Open Source";
   startingPrice?: string; freeTrial?: boolean; bestFor?: string; subcategory?: string;
-  tags?: string[]; logoUrl?: string | null; screenshotUrls?: string[];
+  tags?: string[]; platforms?: Platform[]; logoUrl?: string | null; screenshotUrls?: string[];
   couponCode?: string; discountDetails?: string;
 };
 
@@ -62,7 +62,8 @@ export const initialAdminState: AdminState = {
     id: tool.id, name: tool.name, slug: tool.slug, category: tool.category, logo: tool.logo,
     color: tool.logoColor, status: index === 17 ? "Draft" : "Published",
     featured: Boolean(tool.featured), verified: Boolean(tool.verified),
-    sponsored: Boolean(tool.sponsored), views: tool.views, updatedAt: tool.updatedAt
+    sponsored: Boolean(tool.sponsored), views: tool.views, updatedAt: tool.updatedAt,
+    platforms: tool.platforms
   })),
   users: [
     { id: "u1", name: "Maya Chen", email: "maya@example.com", role: "USER", status: "Active", joined: "Jun 18, 2026", avatar: "M" },

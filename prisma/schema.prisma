@@ -12,20 +12,39 @@ model User {
   name         String
   email        String       @unique
   passwordHash String       @default("")
+  googleId     String?      @unique
   role         String       @default("USER")
   status       String       @default("Active")
   avatar       String?
   avatarUrl    String?
   joinedAt     DateTime     @default(now())
   submissions Submission[]
+  reviewedSubmissions Submission[] @relation("SubmissionReviewer")
   tools        Tool[]       @relation("ToolOwner")
+  ownedDeals   Deal[]       @relation("DealOwner")
   savedTools   SavedTool[]
   ratings      Rating[]
   activities   ActivityEvent[]
+  passwordChangeRequests PasswordChangeRequest[]
+  auditLogs    AuditLog[]  @relation("AuditActor")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   @@index([role])
+  @@index([status])
+}
+
+model PasswordChangeRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  codeHash    String
+  passwordHash String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model Category {
@@ -67,6 +86,13 @@ model Tool {
   alternativesJson String    @default("[]")
   screenshotsJson  String    @default("[]")
   status           String    @default("DRAFT")
+  approvedById     String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  suspendedAt      DateTime?
+  archivedAt       DateTime?
+  createdById      String?
+  updatedById      String?
   featured         Boolean   @default(false)
   sponsored        Boolean   @default(false)
   verified         Boolean   @default(false)
@@ -84,6 +110,7 @@ model Tool {
   categoryId       String
   category         Category  @relation(fields: [categoryId], references: [id])
   submissions      Submission[]
+  deals            Deal[]
   savedBy          SavedTool[]
   ratings          Rating[]
   activities       ActivityEvent[]
@@ -93,6 +120,7 @@ model Tool {
   @@index([status, featured])
   @@index([categoryId])
   @@index([ownerId])
+  @@index([approvedById])
 }
 
 model Submission {
@@ -101,28 +129,48 @@ model Submission {
   status       String   @default("PENDING")
   payloadJson  String
   reviewNotes  String?
+  rejectionReason String?
   submitterId  String
   submitter    User     @relation(fields: [submitterId], references: [id], onDelete: Cascade)
   toolId       String?
   tool         Tool?    @relation(fields: [toolId], references: [id], onDelete: SetNull)
   reviewedById String?
+  reviewedBy   User?    @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt   DateTime?
+  createdById  String?
+  updatedById  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([status, createdAt])
+  @@index([submitterId, status])
+  @@index([toolId, status])
 }
 
 model Deal {
   id        String   @id
+  toolId    String?
+  ownerId   String?
   toolName  String
   discount  String
   code      String
+  status    String   @default("PENDING_REVIEW")
+  approvedById String?
+  approvedAt DateTime?
+  rejectionReason String?
   active    Boolean  @default(true)
   clicks    Int      @default(0)
   expires   String
+  createdById String?
+  updatedById String?
+  tool      Tool?    @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  owner     User?    @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([toolId])
+  @@index([ownerId])
+  @@index([status])
 }
 
 model SavedTool {
@@ -162,4 +210,24 @@ model ActivityEvent {
   @@index([type, createdAt])
   @@index([toolId, createdAt])
   @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?
+  actorRole    String?
+  action       String
+  resourceType String
+  resourceId   String?
+  ipAddress    String?
+  userAgent    String?
+  beforeJson   String?
+  afterJson    String?
+  metadataJson String?
+  actor        User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([action, createdAt])
 }

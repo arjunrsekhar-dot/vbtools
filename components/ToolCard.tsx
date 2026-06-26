@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, Bookmark, Check, Star } from "lucide-react";
 import { Tool } from "@/lib/types";
 import { useApp } from "@/components/AppProvider";
-import Image from "next/image";
+import { ToolLogo } from "@/components/ToolLogo";
 
 export function ToolCard({ tool, compact = false }: { tool: Tool; compact?: boolean }) {
   const { isSaved, toggleSaved, user } = useApp();
@@ -22,9 +22,7 @@ export function ToolCard({ tool, compact = false }: { tool: Tool; compact?: bool
   return (
     <Link href={`/tools/${tool.slug}`} className={`tool-card ${compact ? "compact" : ""}`}>
       <div className="tool-card-top">
-        <div className="tool-logo" style={{ background: tool.logoColor }}>
-          {tool.logoUrl ? <Image src={tool.logoUrl} alt={`${tool.name} logo`} fill sizes="52px" /> : <span style={{ color: tool.logoColor === "#f2ff5e" ? "#151515" : "#fff" }}>{tool.logo}</span>}
-        </div>
+        <ToolLogo name={tool.name} logo={tool.logo} logoColor={tool.logoColor} logoUrl={tool.logoUrl} />
         <button className={`save-tool ${saved ? "is-saved" : ""}`} onClick={handleSave} aria-label="Save tool">
           <Bookmark size={18} fill={saved ? "currentColor" : "none"} />
         </button>

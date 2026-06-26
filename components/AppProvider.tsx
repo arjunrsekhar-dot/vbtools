@@ -4,12 +4,19 @@ import { SessionUser } from "@/lib/types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 type ThemeMode = "light" | "dark";
+type Branding = {
+  logoUrl: string | null;
+  logoType: "png" | "svg" | null;
+  updatedAt: string | null;
+};
 
 type AppContextValue = {
   user: SessionUser | null;
   loadingUser: boolean;
+  branding: Branding;
   saved: string[];
   theme: ThemeMode;
+  refreshBranding: () => Promise<void>;
   toggleTheme: () => void;
   toggleSaved: (slug: string) => void;
   isSaved: (slug: string) => boolean;
@@ -19,6 +26,7 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 const LEGACY_SAVED_KEY = "voltbean_saved";
 const THEME_KEY = "voltbean_theme";
+const defaultBranding: Branding = { logoUrl: null, logoType: null, updatedAt: null };
 
 function readTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
@@ -59,8 +67,16 @@ function readSavedTools(userId: string) {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [branding, setBranding] = useState<Branding>(defaultBranding);
   const [saved, setSaved] = useState<string[]>([]);
   const [theme, setTheme] = useState<ThemeMode>("light");
+
+  const refreshBranding = useCallback(async () => {
+    const response = await fetch("/api/branding", { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json() as { branding?: Branding };
+    setBranding(data.branding || defaultBranding);
+  }, []);
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -69,6 +85,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .catch(() => setUser(null))
       .finally(() => setLoadingUser(false));
   }, []);
+
+  useEffect(() => {
+    void refreshBranding();
+  }, [refreshBranding]);
 
   useEffect(() => {
     setTheme(readTheme());
@@ -143,14 +163,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       loadingUser,
+      branding,
       saved,
       theme,
+      refreshBranding,
       toggleTheme,
       toggleSaved,
       isSaved: (slug: string) => saved.includes(slug),
       logout
     }),
-    [user, loadingUser, saved, theme, toggleTheme, toggleSaved, logout]
+    [user, loadingUser, branding, saved, theme, refreshBranding, toggleTheme, toggleSaved, logout]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

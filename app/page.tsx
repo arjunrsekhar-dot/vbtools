@@ -6,6 +6,7 @@ import {
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { SearchBox } from "@/components/SearchBox";
 import { ToolCard } from "@/components/ToolCard";
+import { ToolLogo } from "@/components/ToolLogo";
 import { categories } from "@/lib/tools";
 import { getPublishedTools } from "@/lib/catalog-store";
 
@@ -16,6 +17,10 @@ export default async function HomePage() {
   const featured = tools.filter((tool) => tool.featured).slice(0, 4);
   const latest = [...tools].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4);
   const deals = tools.filter((tool) => tool.discount).slice(0, 3);
+  const categoryCounts = new Map(categories.map((category) => [
+    category.name,
+    tools.filter((tool) => tool.category === category.name).length
+  ]));
 
   return (
     <>
@@ -78,7 +83,7 @@ export default async function HomePage() {
                   <strong>{category.name}</strong>
                   <small>{category.description}</small>
                 </span>
-                <span className="category-count">{category.count}</span>
+                <span className="category-count">{categoryCounts.get(category.name) || 0}</span>
                 <ChevronRight size={18} className="category-arrow" />
               </Link>
             ))}
@@ -121,7 +126,7 @@ export default async function HomePage() {
           <div className="deal-list">
             {deals.map((tool) => (
               <Link href={`/tools/${tool.slug}`} className="deal-card" key={tool.id}>
-                <div className="tool-logo small" style={{ background: tool.logoColor }}><span>{tool.logo}</span></div>
+                <ToolLogo name={tool.name} logo={tool.logo} logoColor={tool.logoColor} logoUrl={tool.logoUrl} className="small" />
                 <div className="deal-copy">
                   <div><strong>{tool.name}</strong><span>{tool.category}</span></div>
                   <p>{tool.discount}</p>

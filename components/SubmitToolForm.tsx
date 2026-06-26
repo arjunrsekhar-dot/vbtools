@@ -8,6 +8,7 @@ import { useApp } from "@/components/AppProvider";
 import { Turnstile } from "@/components/Turnstile";
 import { FileImagePreviews } from "@/components/ImagePreviews";
 import { LoginPrompt } from "@/components/LoginPrompt";
+import { platformOptions } from "@/lib/types";
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
@@ -26,6 +27,7 @@ export function SubmitToolForm() {
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState(["Productivity"]);
   const [tag, setTag] = useState("");
+  const [platforms, setPlatforms] = useState<string[]>(["Web"]);
   const [logo, setLogo] = useState<File | null>(null);
   const [screenshots, setScreenshots] = useState<File[]>([]);
   const [captchaToken, setCaptchaToken] = useState("");
@@ -97,6 +99,7 @@ export function SubmitToolForm() {
     if (!value("category")) errors.category = "Choose the closest category.";
     if (fullDescription.length < 40) errors.fullDescription = `Add ${40 - fullDescription.length} more character${40 - fullDescription.length === 1 ? "" : "s"} (40 minimum).`;
     else if (fullDescription.length > 5000) errors.fullDescription = "Use no more than 5,000 characters.";
+    if (!platforms.length) errors.platforms = "Choose at least one platform.";
     if (!captchaToken) errors.captchaToken = "Complete the security check before submitting.";
     return errors;
   }
@@ -118,6 +121,7 @@ export function SubmitToolForm() {
       return;
     }
     form.set("tags", JSON.stringify(tags));
+    form.set("platforms", JSON.stringify(platforms));
     form.set("captchaToken", captchaToken);
     if (logo) form.set("logo", logo);
     form.delete("screenshots");
@@ -185,6 +189,27 @@ export function SubmitToolForm() {
           <label><span>Starting price</span><input name="startingPrice" placeholder="e.g. $12/month" /></label>
           <label><span>Coupon code</span><input name="couponCode" placeholder="Optional" /></label>
           <label><span>Discount details</span><input name="discountDetails" placeholder="e.g. 20% off for 3 months" /></label>
+          <div className="span-2">
+            <span className="field-label">Platforms *</span>
+            <div className="tool-editor-flags">
+              {platformOptions.map((platform) => (
+                <label className="checkbox-card" key={platform}>
+                  <input
+                    type="checkbox"
+                    checked={platforms.includes(platform)}
+                    onChange={(event) => {
+                      clearField("platforms");
+                      setPlatforms((current) => event.target.checked
+                        ? [...current, platform]
+                        : current.filter((item) => item !== platform));
+                    }}
+                  />
+                  <span><strong>{platform}</strong></span>
+                </label>
+              ))}
+            </div>
+            <FieldError name="platforms" errors={fieldErrors} />
+          </div>
           <label className="span-2 checkbox-card"><input name="freeTrial" type="checkbox" value="true" /><span><strong>Free trial available</strong><small>Visitors can try the paid plan before purchasing.</small></span></label>
         </div>
       </div>

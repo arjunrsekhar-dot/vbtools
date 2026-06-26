@@ -8,6 +8,7 @@ import { LoginPrompt } from "@/components/LoginPrompt";
 export function ToolActions({ slug, websiteUrl, couponCode }: { slug: string; websiteUrl: string; couponCode?: string }) {
   const { isSaved, toggleSaved, user } = useApp();
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const [reportType, setReportType] = useState("Features");
@@ -25,6 +26,38 @@ export function ToolActions({ slug, websiteUrl, couponCode }: { slug: string; we
     await navigator.clipboard.writeText(couponCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function shareTool() {
+    const url = window.location.href;
+    const payload = {
+      title: document.title,
+      text: document.title,
+      url
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(payload);
+        setShared(true);
+        window.setTimeout(() => setShared(false), 1600);
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        window.setTimeout(() => setShared(false), 1600);
+      }
+    } catch {
+      if (!navigator.clipboard?.writeText) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        window.setTimeout(() => setShared(false), 1600);
+      } catch {
+        // No further fallback available.
+      }
+    }
   }
 
   function recordClick() {
@@ -65,16 +98,17 @@ export function ToolActions({ slug, websiteUrl, couponCode }: { slug: string; we
     <>
       <div className="detail-actions">
         <a href={websiteUrl} target="_blank" rel="noopener noreferrer" className="button button-dark" onClick={recordClick}>Visit website <ExternalLink size={16} /></a>
-        <button className={`button button-outline ${saved ? "saved-active" : ""}`} onClick={save}><Bookmark size={16} fill={saved ? "currentColor" : "none"} /> {saved ? "Saved" : "Save tool"}</button>
-        <button className="icon-button" aria-label="Share" onClick={() => navigator.clipboard.writeText(window.location.href)}><Share2 size={17} /></button>
+        <button type="button" className={`button button-outline ${saved ? "saved-active" : ""}`} onClick={save}><Bookmark size={16} fill={saved ? "currentColor" : "none"} /> {saved ? "Saved" : "Save tool"}</button>
+        <button type="button" className="icon-button" aria-label={shared ? "Link copied" : "Share"} onClick={shareTool}><Share2 size={17} /></button>
       </div>
       {couponCode && (
-        <button className="detail-coupon" onClick={copyCoupon}>
+        <button type="button" className="detail-coupon" onClick={copyCoupon}>
           <span><small>Exclusive coupon</small><strong>{couponCode}</strong></span>
           <span>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copied" : "Copy code"}</span>
         </button>
       )}
       <button
+        type="button"
         className="report-link"
         onClick={() => {
           if (!user) {

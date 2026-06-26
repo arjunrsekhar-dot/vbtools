@@ -1,26 +1,47 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight, BadgeCheck, Ban, Boxes, Check, Clock3, Copy, Eye,
   Filter, Flag, ImagePlus, MousePointerClick, Pencil, Plus, Search, ShieldCheck,
   Star, TicketPercent, Trash2, TrendingUp, UserRound, UsersRound, X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SessionUser, UserRole } from "@/lib/types";
-import { categories, tools } from "@/lib/tools";
+import { platformOptions, SessionUser, UserRole } from "@/lib/types";
+import { categories } from "@/lib/tools";
 import {
   AdminState, initialAdminState, ManagedDeal, ManagedTool, ManagedUser, QueueItem, ReportItem
 } from "@/lib/admin-data";
 import { FileImagePreviews, StoredImagePreviews } from "@/components/ImagePreviews";
+import { useApp } from "@/components/AppProvider";
+import {
+  AdminAnalytics,
+  AdminAnalyticsCategory,
+  AdminAnalyticsMetricTotals,
+  AdminAnalyticsRange,
+  AdminAnalyticsSeries
+} from "@/lib/admin-analytics-types";
 
 type AdminSection = "overview" | "tools" | "reports" | "users" | "deals" | "analytics" | "settings";
-type Range = "7d" | "30d" | "90d";
+type Range = AdminAnalyticsRange;
 
-const chartData: Record<Range, { labels: string[]; users: number[]; views: number[]; clicks: number[] }> = {
-  "7d": { labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], users: [260, 310, 285, 390, 430, 360, 470], views: [6200, 7400, 6900, 9100, 10400, 8800, 11600], clicks: [1800, 2100, 1950, 2800, 3200, 2600, 3500] },
-  "30d": { labels: ["May 23", "May 28", "Jun 2", "Jun 7", "Jun 12", "Jun 17", "Jun 21"], users: [980, 1210, 1170, 1490, 1660, 1810, 2040], views: [24900, 29100, 27600, 35400, 38200, 44100, 48700], clicks: [7900, 9100, 8700, 11200, 12100, 14300, 15900] },
-  "90d": { labels: ["Apr 1", "Apr 15", "May 1", "May 15", "Jun 1", "Jun 10", "Jun 21"], users: [2410, 2980, 3640, 4390, 5100, 5840, 6710], views: [68200, 81300, 95600, 112400, 134800, 151600, 174300], clicks: [20100, 24700, 29300, 34800, 41100, 46900, 53800] }
+const emptySeries: AdminAnalyticsSeries = {
+  labels: ["No data"],
+  views: [0],
+  clicks: [0],
+  users: [0],
+  ratings: [0]
+};
+
+const emptyTotals: AdminAnalyticsMetricTotals = { views: 0, clicks: 0, users: 0, ratings: 0 };
+
+const emptyAnalytics: AdminAnalytics = {
+  totals: { tools: 0, users: 0, developers: 0, ratings: 0, views: 0, clicks: 0 },
+  ranges: { "7d": emptySeries, "30d": emptySeries, "90d": emptySeries },
+  rangeTotals: { "7d": emptyTotals, "30d": emptyTotals, "90d": emptyTotals },
+  previousTotals: { "7d": emptyTotals, "30d": emptyTotals, "90d": emptyTotals },
+  categories: { "7d": [], "30d": [], "90d": [] }
 };
 
 function normalizeAdminState(state: AdminState): AdminState {
@@ -40,14 +61,6 @@ function useAdminState() {
   const [ready, setReady] = useState(false);
   const valueRef = useRef<AdminState>(initialAdminState);
   useEffect(() => {
-    const cached = window.localStorage.getItem("voltbean_admin_state");
-    if (cached) {
-      try {
-        const parsed = normalizeAdminState(JSON.parse(cached) as AdminState);
-        valueRef.current = parsed;
-        setValue(parsed);
-      } catch { /* fetch the server copy below */ }
-    }
     fetch("/api/admin/state")
       .then((response) => response.json())
       .then((data) => {
@@ -55,7 +68,6 @@ function useAdminState() {
           const state = normalizeAdminState(data.state);
           valueRef.current = state;
           setValue(state);
-          window.localStorage.setItem("voltbean_admin_state", JSON.stringify(state));
         }
       })
       .catch(() => undefined)
@@ -67,7 +79,6 @@ function useAdminState() {
       : nextValue);
     valueRef.current = next;
     setValue(next);
-    window.localStorage.setItem("voltbean_admin_state", JSON.stringify(next));
     void fetch("/api/admin/state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -78,8 +89,33 @@ function useAdminState() {
   return [value, setRemoteValue, ready] as const;
 }
 
+function useAdminAnalytics() {
+  const [analytics, setAnalytics] = useState<AdminAnalytics>(emptyAnalytics);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/admin/analytics")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { analytics?: AdminAnalytics }) => {
+        if (active && data.analytics) setAnalytics(data.analytics);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  return analytics;
+}
+
 function formatNumber(value: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 1 : 0)}K` : String(value);
+}
+
+function formatDelta(current: number, previous: number) {
+  if (!previous && !current) return "No change";
+  if (!previous) return "New activity";
+  const percent = ((current - previous) / previous) * 100;
+  const sign = percent > 0 ? "+" : "";
+  return `${sign}${percent.toFixed(1)}%`;
 }
 
 function parseDealExpiry(value?: string) {
@@ -106,30 +142,32 @@ function expiryDisplay(value?: string) {
   return expiresAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function InteractiveChart({ range, metric = "views", secondary = "users" }: { range: Range; metric?: "views" | "clicks"; secondary?: "users" | "clicks" }) {
-  const data = chartData[range];
+function InteractiveChart({ data, range, metric = "views", secondary = "users" }: { data: AdminAnalyticsSeries; range: Range; metric?: "views" | "clicks"; secondary?: "users" | "clicks" }) {
   const [active, setActive] = useState(data.labels.length - 1);
   useEffect(() => setActive(data.labels.length - 1), [data.labels.length, range]);
   const primary = data[metric];
   const secondaryData = data[secondary];
-  const max = Math.max(...primary) * 1.12;
+  const max = Math.max(1, ...primary) * 1.12;
   const width = 700;
   const height = 220;
   const pad = 22;
   const points = (values: number[]) => values.map((value, index) => {
-    const x = pad + index * ((width - pad * 2) / (values.length - 1));
+    const x = values.length === 1 ? width / 2 : pad + index * ((width - pad * 2) / (values.length - 1));
     const y = height - pad - (value / max) * (height - pad * 2);
     return { x, y, value };
   });
   const mainPoints = points(primary);
-  const secondaryPoints = points(secondaryData.map((value) => value * (max / Math.max(...secondaryData)) * .72));
+  const secondaryMax = Math.max(1, ...secondaryData);
+  const secondaryPoints = points(secondaryData.map((value) => value * (max / secondaryMax) * .72));
   const path = (items: { x: number; y: number }[]) => items.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const activeIndex = Math.min(active, data.labels.length - 1);
+  const activePoint = mainPoints[activeIndex] || mainPoints[0];
   return (
     <div className="interactive-chart">
       <div className="chart-legend"><span><i className="legend-primary" />{metric === "views" ? "Tool views" : "Outbound clicks"}</span><span><i className="legend-secondary" />{secondary === "users" ? "New users" : "Outbound clicks"}</span></div>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Interactive ${range} analytics chart`}>
         {[0, 1, 2, 3].map((line) => <line key={line} x1={pad} x2={width - pad} y1={pad + line * 55} y2={pad + line * 55} className="chart-grid-line" />)}
-        <path d={`${path(mainPoints)} L ${mainPoints.at(-1)?.x} ${height - pad} L ${mainPoints[0].x} ${height - pad} Z`} className="chart-area" />
+        <path d={`${path(mainPoints)} L ${mainPoints.at(-1)?.x || width / 2} ${height - pad} L ${mainPoints[0]?.x || width / 2} ${height - pad} Z`} className="chart-area" />
         <path d={path(mainPoints)} className="chart-line-primary" />
         <path d={path(secondaryPoints)} className="chart-line-secondary" />
         {mainPoints.map((point, index) => (
@@ -140,10 +178,10 @@ function InteractiveChart({ range, metric = "views", secondary = "users" }: { ra
         ))}
       </svg>
       <div className="chart-labels">{data.labels.map((label) => <span key={label}>{label}</span>)}</div>
-      <div className="chart-tooltip" style={{ left: `${(mainPoints[active].x / width) * 100}%` }}>
-        <small>{data.labels[active]}</small>
-        <strong>{formatNumber(primary[active])} {metric}</strong>
-        <span>{formatNumber(data[secondary][active])} {secondary}</span>
+      <div className="chart-tooltip" style={{ left: `${(activePoint.x / width) * 100}%` }}>
+        <small>{data.labels[activeIndex]}</small>
+        <strong>{formatNumber(primary[activeIndex] || 0)} {metric}</strong>
+        <span>{formatNumber(data[secondary][activeIndex] || 0)} {secondary}</span>
       </div>
     </div>
   );
@@ -151,6 +189,7 @@ function InteractiveChart({ range, metric = "views", secondary = "users" }: { ra
 
 export function AdminDashboard({ user, section = "overview" }: { user: SessionUser; section?: AdminSection }) {
   const [adminState, setAdminState, stateReady] = useAdminState();
+  const analytics = useAdminAnalytics();
   const { queue, tools: managedTools, users: managedUsers, deals, reports } = adminState;
   const setManagedTools = useCallback<React.Dispatch<React.SetStateAction<ManagedTool[]>>>((next) => {
     setAdminState((current) => ({ ...current, tools: typeof next === "function" ? next(current.tools) : next }));
@@ -204,6 +243,7 @@ export function AdminDashboard({ user, section = "overview" }: { user: SessionUs
         bestFor: item.bestFor,
         subcategory: item.subcategory,
         tags: item.tags,
+        platforms: item.platforms?.length ? item.platforms : ["Web"],
         logoUrl: item.logoUrl,
         screenshotUrls: item.screenshotUrls,
         couponCode: item.couponCode,
@@ -222,37 +262,36 @@ export function AdminDashboard({ user, section = "overview" }: { user: SessionUs
   return (
     <>
       {toast && <div className="admin-toast"><Check size={15} />{toast}</div>}
-      {section === "overview" && <Overview user={user} queue={queue} reports={reports} action={queueAction} setReviewing={setReviewing} setReports={setReports} notify={notify} />}
+      {section === "overview" && <Overview user={user} queue={queue} reports={reports} analytics={analytics} action={queueAction} setReviewing={setReviewing} setReports={setReports} notify={notify} />}
       {section === "tools" && <ToolsAdmin items={managedTools} setItems={setManagedTools} notify={notify} />}
       {section === "reports" && <ReportsAdmin items={reports} setItems={setReports} notify={notify} />}
       {section === "users" && <UsersAdmin items={managedUsers} setItems={setManagedUsers} notify={notify} />}
       {section === "deals" && <DealsAdmin items={deals} setItems={setDeals} notify={notify} />}
-      {section === "analytics" && <AnalyticsAdmin />}
+      {section === "analytics" && <AnalyticsAdmin analytics={analytics} />}
       {section === "settings" && <AdminSettings user={user} notify={notify} />}
       {reviewing && <ReviewModal item={reviewing} close={() => setReviewing(null)} action={queueAction} />}
     </>
   );
 }
 
-function Overview({ user, queue, reports, action, setReviewing, setReports, notify }: {
-  user: SessionUser; queue: QueueItem[]; reports: ReportItem[];
+function Overview({ user, queue, reports, analytics, action, setReviewing, setReports, notify }: {
+  user: SessionUser; queue: QueueItem[]; reports: ReportItem[]; analytics: AdminAnalytics;
   action: (id: string | number, verb: "approved" | "rejected") => void;
   setReviewing: (item: QueueItem) => void;
   setReports: React.Dispatch<React.SetStateAction<ReportItem[]>>;
   notify: (message: string) => void;
 }) {
   const [range, setRange] = useState<Range>("30d");
-  const data = chartData[range];
+  const data = analytics.ranges[range];
+  const totals = analytics.rangeTotals[range];
+  const previous = analytics.previousTotals[range];
   const pulse = [
-    [Eye, formatNumber(data.views.reduce((a, b) => a + b, 0)), "Tool views", "+16%"],
-    [MousePointerClick, formatNumber(data.clicks.reduce((a, b) => a + b, 0)), "Outbound clicks", "+21%"],
-    [Star, range === "7d" ? "1,840" : range === "30d" ? "7,830" : "21.4K", "New ratings", "+9%"]
+    [Eye, formatNumber(totals.views), "Tool views", formatDelta(totals.views, previous.views)],
+    [MousePointerClick, formatNumber(totals.clicks), "Outbound clicks", formatDelta(totals.clicks, previous.clicks)],
+    [Star, formatNumber(totals.ratings), "New ratings", formatDelta(totals.ratings, previous.ratings)]
   ] as const;
-  const categoryStats = categories.map((category) => ({
-    name: category.name,
-    views: tools.filter((tool) => tool.category === category.name).reduce((total, tool) => total + tool.views, 0)
-  })).sort((a, b) => b.views - a.views).slice(0, 5);
-  const maxViews = categoryStats[0].views;
+  const categoryStats = analytics.categories[range].slice(0, 5);
+  const maxViews = Math.max(1, categoryStats[0]?.views || 0);
   const openReports = reports.filter((report) => report.status === "Open");
   function resolveReport(id: string) {
     setReports((current) => current.map((report) => report.id === id ? { ...report, status: "Resolved", resolvedAt: new Date().toISOString() } : report));
@@ -262,9 +301,9 @@ function Overview({ user, queue, reports, action, setReviewing, setReports, noti
     <>
       <div className="dashboard-heading"><div><span>Admin control room</span><h1>Morning, {user.name.split(" ")[0]}.</h1><p>Here&apos;s what needs attention across Voltbean today.</p></div><Link href="/submit" className="button button-dark">Add tool <ArrowRight size={16} /></Link></div>
       <div className="stat-grid admin-stats">
-        <Link href="/admin/tools"><span><Boxes /></span><div><strong>{tools.length}</strong><small>Catalog tools</small><em>+4 this month</em></div></Link>
-        <Link href="/admin/users"><span><UserRound /></span><div><strong>18,294</strong><small>Users</small><em>+8.2%</em></div></Link>
-        <Link href="/admin/users?role=developer"><span><UsersRound /></span><div><strong>1,126</strong><small>Developers</small><em>+42 this month</em></div></Link>
+        <Link href="/admin/tools"><span><Boxes /></span><div><strong>{analytics.totals.tools}</strong><small>Catalog tools</small><em>{formatNumber(analytics.totals.views)} lifetime views</em></div></Link>
+        <Link href="/admin/users"><span><UserRound /></span><div><strong>{analytics.totals.users}</strong><small>Users</small><em>{formatNumber(totals.users)} new in range</em></div></Link>
+        <Link href="/admin/users?role=developer"><span><UsersRound /></span><div><strong>{analytics.totals.developers}</strong><small>Developers</small><em>Real account roles</em></div></Link>
         <Link href="/admin/reports" className={openReports.length ? "attention-stat" : ""}><span><Flag /></span><div><strong>{openReports.length}</strong><small>Open reports</small><em>{openReports.length ? "Needs review" : "All clear"}</em></div></Link>
         <div className="attention-stat"><span><Clock3 /></span><div><strong>{queue.length}</strong><small>Pending review</small><em>{queue.length ? "Needs attention" : "All clear"}</em></div></div>
       </div>
@@ -279,8 +318,8 @@ function Overview({ user, queue, reports, action, setReviewing, setReports, noti
         <aside className="dashboard-panel quick-panel"><div className="panel-heading"><div><h2>Platform pulse</h2><p>{range === "7d" ? "Last 7 days" : range === "30d" ? "Last 30 days" : "Last 90 days"}</p></div></div><div className="pulse-list">{pulse.map(([Icon, value, label, growth]) => <div key={label}><span><Icon /></span><p><strong>{value}</strong><small>{label}</small></p><em>{growth}</em></div>)}</div></aside>
       </div>
       <div className="dashboard-grid-main admin-lower">
-        <div className="dashboard-panel chart-panel"><div className="panel-heading"><div><h2>Growth overview</h2><p>Hover or focus a point to inspect it</p></div><select aria-label="Analytics date range" value={range} onChange={(event) => setRange(event.target.value as Range)}><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select></div><InteractiveChart range={range} /></div>
-        <div className="dashboard-panel"><div className="panel-heading"><div><h2>Popular categories</h2><p>Ranked by catalog views</p></div></div><div className="category-bars">{categoryStats.map((item, index) => <div key={item.name}><span>{index + 1}</span><strong>{item.name}</strong><i><b style={{ width: `${(item.views / maxViews) * 100}%` }} /></i><small>{formatNumber(item.views)}</small></div>)}</div></div>
+        <div className="dashboard-panel chart-panel"><div className="panel-heading"><div><h2>Growth overview</h2><p>Hover or focus a point to inspect it</p></div><select aria-label="Analytics date range" value={range} onChange={(event) => setRange(event.target.value as Range)}><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select></div><InteractiveChart data={data} range={range} /></div>
+        <div className="dashboard-panel"><div className="panel-heading"><div><h2>Popular categories</h2><p>Ranked by recorded views in range</p></div></div><div className="category-bars">{categoryStats.map((item, index) => <div key={item.name}><span>{index + 1}</span><strong>{item.name}</strong><i><b style={{ width: `${(item.views / maxViews) * 100}%` }} /></i><small>{formatNumber(item.views)}</small></div>)}{!categoryStats.length && <div className="queue-empty"><BadgeCheck /><strong>No category activity</strong><small>Views will appear here once visitors open tool pages.</small></div>}</div></div>
       </div>
       <div className="dashboard-panel">
         <div className="panel-heading"><div><h2>Reported listing issues</h2><p>Incorrect-information reports submitted by visitors.</p></div><Link href="/admin/reports">View all <ArrowRight size={12} /></Link></div>
@@ -346,7 +385,7 @@ function ToolsAdmin({ items, setItems, notify }: { items: ManagedTool[]; setItem
   }
   function openEditor(item: ManagedTool) {
     setEditing(item);
-    setDraft({ ...item, tags: item.tags || [], screenshotUrls: item.screenshotUrls || [] });
+    setDraft({ ...item, tags: item.tags || [], platforms: item.platforms?.length ? item.platforms : ["Web"], screenshotUrls: item.screenshotUrls || [] });
     setLogoFile(null);
     setScreenshotFiles([]);
     setEditorError("");
@@ -366,6 +405,10 @@ function ToolsAdmin({ items, setItems, notify }: { items: ManagedTool[]; setItem
     }
     if (!draft.fullDescription?.trim() || draft.fullDescription.trim().length < 40) {
       setEditorError("Full description must be at least 40 characters.");
+      return;
+    }
+    if (!draft.platforms?.length) {
+      setEditorError("Choose at least one platform.");
       return;
     }
     let logoUrl = draft.logoUrl;
@@ -391,6 +434,7 @@ function ToolsAdmin({ items, setItems, notify }: { items: ManagedTool[]; setItem
       slug: normalizedSlug,
       logo: draft.logo.trim() || draft.name.trim().charAt(0).toUpperCase(),
       updatedAt: new Date().toISOString().slice(0, 10),
+      platforms: draft.platforms,
       logoUrl,
       screenshotUrls
     };
@@ -437,6 +481,26 @@ function ToolsAdmin({ items, setItems, notify }: { items: ManagedTool[]; setItem
               <label className="span-2"><span>Full description</span><textarea aria-label="Edit tool full description" required minLength={40} maxLength={5000} rows={6} value={draft.fullDescription || ""} onChange={(event) => setDraft({ ...draft, fullDescription: event.target.value })} /></label>
               <label className="span-2"><span>Best for</span><input aria-label="Edit tool best for" value={draft.bestFor || ""} onChange={(event) => setDraft({ ...draft, bestFor: event.target.value })} /></label>
               <label className="span-2"><span>Tags (comma separated)</span><input aria-label="Edit tool tags" value={(draft.tags || []).join(", ")} onChange={(event) => setDraft({ ...draft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12) })} /></label>
+              <div className="span-2">
+                <span className="field-label">Platforms</span>
+                <div className="tool-editor-flags">
+                  {platformOptions.map((platform) => (
+                    <label className="checkbox-card" key={platform}>
+                      <input
+                        type="checkbox"
+                        checked={(draft.platforms || []).includes(platform)}
+                        onChange={(event) => setDraft({
+                          ...draft,
+                          platforms: event.target.checked
+                            ? [...(draft.platforms || []), platform]
+                            : (draft.platforms || []).filter((item) => item !== platform)
+                        })}
+                      />
+                      <span><strong>{platform}</strong></span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               <label><span>Pricing type</span><select aria-label="Edit tool pricing type" value={draft.pricingType || "Freemium"} onChange={(event) => setDraft({ ...draft, pricingType: event.target.value as ManagedTool["pricingType"] })}><option>Free</option><option>Freemium</option><option>Paid</option><option>Open Source</option></select></label>
               <label><span>Starting price</span><input aria-label="Edit tool starting price" value={draft.startingPrice || ""} onChange={(event) => setDraft({ ...draft, startingPrice: event.target.value })} /></label>
               <label><span>Coupon code</span><input aria-label="Edit tool coupon code" value={draft.couponCode || ""} onChange={(event) => setDraft({ ...draft, couponCode: event.target.value })} /></label>
@@ -567,28 +631,91 @@ function DealsAdmin({ items, setItems, notify }: { items: ManagedDeal[]; setItem
   );
 }
 
-function AnalyticsAdmin() {
+function AnalyticsAdmin({ analytics }: { analytics: AdminAnalytics }) {
   const [range, setRange] = useState<Range>("30d");
   const [metric, setMetric] = useState<"views" | "clicks">("views");
-  const data = chartData[range];
-  const total = data[metric].reduce((a, b) => a + b, 0);
-  const previous = Math.round(total / 1.16);
-  const categoryRows = useMemo(() => categories.map((category) => {
-    const categoryTools = tools.filter((tool) => tool.category === category.name);
-    return { name: category.name, views: categoryTools.reduce((sum, tool) => sum + tool.views, 0), clicks: categoryTools.reduce((sum, tool) => sum + tool.clicks, 0), tools: categoryTools.length };
-  }).sort((a, b) => b[metric] - a[metric]), [metric]);
+  const data = analytics.ranges[range];
+  const totals = analytics.rangeTotals[range];
+  const previous = analytics.previousTotals[range];
+  const total = totals[metric];
+  const previousTotal = previous[metric];
+  const ctr = totals.views ? ((totals.clicks / totals.views) * 100).toFixed(1) : "0.0";
+  const categoryRows = useMemo<AdminAnalyticsCategory[]>(() => {
+    return [...analytics.categories[range]].sort((a, b) => b[metric] - a[metric] || a.name.localeCompare(b.name));
+  }, [analytics.categories, metric, range]);
   return (
     <>
       <div className="dashboard-heading"><div><span>Platform intelligence</span><h1>Analytics</h1><p>Explore discovery, engagement, and outbound performance.</p></div><div className="heading-controls"><select aria-label="Analytics range" value={range} onChange={(event) => setRange(event.target.value as Range)}><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option></select></div></div>
-      <div className="stat-grid admin-section-stats"><div><span><Eye /></span><div><strong>{formatNumber(data.views.reduce((a, b) => a + b, 0))}</strong><small>Tool views</small><em>+16%</em></div></div><div><span><MousePointerClick /></span><div><strong>{formatNumber(data.clicks.reduce((a, b) => a + b, 0))}</strong><small>Outbound clicks</small><em>+21%</em></div></div><div><span><UserRound /></span><div><strong>{formatNumber(data.users.reduce((a, b) => a + b, 0))}</strong><small>New users</small><em>+8.2%</em></div></div><div><span><TrendingUp /></span><div><strong>{((data.clicks.reduce((a, b) => a + b, 0) / data.views.reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%</strong><small>Click-through rate</small></div></div></div>
-      <div className="dashboard-panel analytics-main-chart"><div className="panel-heading"><div><h2>{metric === "views" ? "Tool discovery" : "Outbound engagement"}</h2><p>{formatNumber(total)} total · {formatNumber(total - previous)} more than the previous period</p></div><div className="metric-tabs"><button className={metric === "views" ? "active" : ""} onClick={() => setMetric("views")}>Views</button><button className={metric === "clicks" ? "active" : ""} onClick={() => setMetric("clicks")}>Clicks</button></div></div><InteractiveChart range={range} metric={metric} secondary={metric === "views" ? "clicks" : "users"} /></div>
-      <div className="dashboard-panel"><div className="panel-heading"><div><h2>Category performance</h2><p>Compare traffic and conversion by category</p></div></div><div className="analytics-table"><div className="analytics-row analytics-head"><span>Category</span><span>Tools</span><span>Views</span><span>Clicks</span><span>CTR</span></div>{categoryRows.map((row) => <div className="analytics-row" key={row.name}><strong>{row.name}</strong><span>{row.tools}</span><span>{formatNumber(row.views)}</span><span>{formatNumber(row.clicks)}</span><span>{((row.clicks / row.views) * 100).toFixed(1)}%</span></div>)}</div></div>
+      <div className="stat-grid admin-section-stats"><div><span><Eye /></span><div><strong>{formatNumber(totals.views)}</strong><small>Tool views</small><em>{formatDelta(totals.views, previous.views)}</em></div></div><div><span><MousePointerClick /></span><div><strong>{formatNumber(totals.clicks)}</strong><small>Outbound clicks</small><em>{formatDelta(totals.clicks, previous.clicks)}</em></div></div><div><span><UserRound /></span><div><strong>{formatNumber(totals.users)}</strong><small>New users</small><em>{formatDelta(totals.users, previous.users)}</em></div></div><div><span><TrendingUp /></span><div><strong>{ctr}%</strong><small>Click-through rate</small></div></div></div>
+      <div className="dashboard-panel analytics-main-chart"><div className="panel-heading"><div><h2>{metric === "views" ? "Tool discovery" : "Outbound engagement"}</h2><p>{formatNumber(total)} total · {formatDelta(total, previousTotal)} vs previous period</p></div><div className="metric-tabs"><button className={metric === "views" ? "active" : ""} onClick={() => setMetric("views")}>Views</button><button className={metric === "clicks" ? "active" : ""} onClick={() => setMetric("clicks")}>Clicks</button></div></div><InteractiveChart data={data} range={range} metric={metric} secondary={metric === "views" ? "clicks" : "users"} /></div>
+      <div className="dashboard-panel"><div className="panel-heading"><div><h2>Category performance</h2><p>Compare recorded traffic and conversion by category</p></div></div><div className="analytics-table"><div className="analytics-row analytics-head"><span>Category</span><span>Tools</span><span>Views</span><span>Clicks</span><span>CTR</span></div>{categoryRows.map((row) => <div className="analytics-row" key={row.name}><strong>{row.name}</strong><span>{row.tools}</span><span>{formatNumber(row.views)}</span><span>{formatNumber(row.clicks)}</span><span>{row.views ? ((row.clicks / row.views) * 100).toFixed(1) : "0.0"}%</span></div>)}</div></div>
     </>
   );
 }
 
 function AdminSettings({ user, notify }: { user: SessionUser; notify: (message: string) => void }) {
-  return <><div className="dashboard-heading"><div><span>Administration</span><h1>Admin settings</h1><p>Manage your profile and moderation preferences.</p></div></div><div className="dashboard-panel settings-panel"><form onSubmit={(event) => { event.preventDefault(); notify("Admin settings saved."); }}><label><span>Name</span><input defaultValue={user.name} /></label><label><span>Email</span><input defaultValue={user.email} /></label><label className="checkbox-card"><input type="checkbox" defaultChecked /><span><strong>Email me about pending reviews</strong><small>Receive a daily digest when the queue is not empty.</small></span></label><label className="checkbox-card"><input type="checkbox" defaultChecked /><span><strong>Require approval for all listing updates</strong><small>Developers cannot publish edits without review.</small></span></label><button className="button button-dark">Save settings</button></form></div></>;
+  const { branding, refreshBranding } = useApp();
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function uploadLogo(event: React.FormEvent) {
+    event.preventDefault();
+    if (!logoFile) {
+      setUploadError("Choose a PNG or SVG logo.");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
+    const form = new FormData();
+    form.set("logo", logoFile);
+    const response = await fetch("/api/branding", { method: "POST", body: form });
+    const data = await response.json() as { error?: string };
+    setUploading(false);
+    if (!response.ok) {
+      setUploadError(data.error || "Logo upload failed.");
+      return;
+    }
+    setLogoFile(null);
+    await refreshBranding();
+    notify("Site logo updated.");
+  }
+
+  return (
+    <>
+      <div className="dashboard-heading"><div><span>Administration</span><h1>Admin settings</h1><p>Manage your profile and moderation preferences.</p></div></div>
+      <div className="dashboard-panel settings-panel">
+        <form onSubmit={(event) => { event.preventDefault(); notify("Admin settings saved."); }}>
+          <label><span>Name</span><input defaultValue={user.name} /></label>
+          <label><span>Email</span><input defaultValue={user.email} /></label>
+          <label className="checkbox-card"><input type="checkbox" defaultChecked /><span><strong>Email me about pending reviews</strong><small>Receive a daily digest when the queue is not empty.</small></span></label>
+          <label className="checkbox-card"><input type="checkbox" defaultChecked /><span><strong>Require approval for all listing updates</strong><small>Developers cannot publish edits without review.</small></span></label>
+          <button className="button button-dark">Save settings</button>
+        </form>
+      </div>
+      <div className="dashboard-panel settings-panel">
+        <form onSubmit={uploadLogo}>
+          <div className="branding-upload-row">
+            <span className="branding-preview">
+              {branding.logoUrl ? <Image src={branding.logoUrl} alt="" width={68} height={42} unoptimized /> : <span>VT</span>}
+            </span>
+            <div>
+              <h2>Site logo</h2>
+              <p>Shown in the header, footer, and dashboard navigation.</p>
+            </div>
+          </div>
+          <label className="editor-upload branding-upload">
+            <ImagePlus />
+            <strong>{logoFile ? logoFile.name : "Upload PNG or SVG logo"}</strong>
+            <small>PNG up to 1MB. SVG up to 512KB, scripts and embedded objects rejected.</small>
+            <input type="file" accept=".png,.svg,image/png,image/svg+xml" onChange={(event) => setLogoFile(event.target.files?.[0] || null)} />
+          </label>
+          {uploadError && <p className="form-error" role="alert">{uploadError}</p>}
+          <button className="button button-dark" disabled={uploading}><ImagePlus /> {uploading ? "Uploading..." : "Update logo"}</button>
+        </form>
+      </div>
+    </>
+  );
 }
 
 function ReviewModal({ item, close, action }: { item: QueueItem; close: () => void; action: (id: string | number, verb: "approved" | "rejected") => void }) {

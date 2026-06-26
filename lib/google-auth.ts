@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "crypto";
 export const GOOGLE_STATE_COOKIE = "voltbean_google_state";
 export const GOOGLE_VERIFIER_COOKIE = "voltbean_google_verifier";
 export const GOOGLE_NEXT_COOKIE = "voltbean_google_next";
+export const GOOGLE_CONNECT_COOKIE = "voltbean_google_connect";
 
 export function randomUrlSafeValue(size = 32) {
   return randomBytes(size).toString("base64url");

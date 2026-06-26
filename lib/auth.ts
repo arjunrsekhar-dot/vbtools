@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionUser, UserRole } from "@/lib/types";
+import { db } from "@/lib/db";
 
 const COOKIE_NAME = "voltbean_session";
 const secret = process.env.AUTH_SECRET || "voltbean-local-demo-secret-change-in-production";
@@ -61,8 +62,15 @@ export async function getSessionUser() {
 export async function requireRole(roles: UserRole[]) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  if (!roles.includes(user.role)) redirect("/dashboard?unauthorized=true");
-  return user;
+  const databaseUser = await db.user.findUnique({ where: { email: user.email } });
+  if (!databaseUser || databaseUser.status !== "Active") redirect("/login");
+  if (!roles.includes(databaseUser.role as UserRole)) redirect("/dashboard?unauthorized=true");
+  return {
+    id: databaseUser.id,
+    name: databaseUser.name,
+    email: databaseUser.email,
+    role: databaseUser.role as UserRole
+  };
 }
 
 export { COOKIE_NAME, demoUsers };

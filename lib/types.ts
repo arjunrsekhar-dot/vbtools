@@ -1,14 +1,18 @@
 export type PricingType = "Free" | "Freemium" | "Paid" | "Open Source";
 
+export const platformOptions = [
+  "Web",
+  "Windows",
+  "macOS",
+  "Linux",
+  "Android",
+  "iOS",
+  "Chrome Extension",
+  "API"
+] as const;
+
 export type Platform =
-  | "Web"
-  | "Windows"
-  | "macOS"
-  | "Linux"
-  | "Android"
-  | "iOS"
-  | "Chrome Extension"
-  | "API";
+  typeof platformOptions[number];
 
 export type Tool = {
   id: string;

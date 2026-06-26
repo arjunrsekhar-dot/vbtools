@@ -1,46 +1,56 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ensureDatabaseUser } from "@/lib/db-user";
+import { assertSameOrigin, auditLog, jsonError, rateLimit, requireActiveUser, requirePublicToolBySlug, sanitizeText } from "@/lib/security";
 
 const schema = z.object({
   slug: z.string().min(1),
   issueType: z.enum(["Pricing", "Features", "Availability", "Broken link", "Other"]),
   details: z.string().trim().min(10).max(1000)
-});
+}).strict();
 
 export async function POST(request: Request) {
-  const parsed = schema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "Invalid report" }, { status: 422 });
+  try {
+    assertSameOrigin(request);
+    rateLimit(request, { key: "reports", limit: 10, windowMs: 60 * 60 * 1000 });
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success) return NextResponse.json({ error: "Invalid report" }, { status: 422 });
 
-  const [session, tool] = await Promise.all([
-    getSessionUser(),
-    db.tool.findUnique({ where: { slug: parsed.data.slug } })
-  ]);
-  if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (!tool) return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+    const [user, tool] = await Promise.all([
+      requireActiveUser(["USER", "DEVELOPER", "ADMIN"]),
+      requirePublicToolBySlug(parsed.data.slug)
+    ]);
 
-  const user = await ensureDatabaseUser(session);
-  const report = await db.activityEvent.create({
-    data: {
-      type: "REPORT_INCORRECT_INFO",
-      toolId: tool.id,
-      userId: user?.id,
-      metadata: JSON.stringify({
+    const details = sanitizeText(parsed.data.details, 1000);
+    const report = await db.activityEvent.create({
+      data: {
+        type: "REPORT_INCORRECT_INFO",
         toolId: tool.id,
-        toolName: tool.name,
-        toolSlug: tool.slug,
-        reporter: user.name,
-        reporterEmail: user.email,
-        issueType: parsed.data.issueType,
-        details: parsed.data.details,
-        status: "Open",
-        referrer: request.headers.get("referer"),
-        userAgent: request.headers.get("user-agent")
-      })
-    }
-  });
+        userId: user.id,
+        metadata: JSON.stringify({
+          toolId: tool.id,
+          toolName: tool.name,
+          toolSlug: tool.slug,
+          reporter: user.name,
+          reporterEmail: user.email,
+          issueType: parsed.data.issueType,
+          details,
+          status: "Open",
+          referrer: request.headers.get("referer"),
+          userAgent: request.headers.get("user-agent")
+        })
+      }
+    });
+    await auditLog(request, {
+      actor: user,
+      action: "CORRECTION_REQUEST_CREATE",
+      resourceType: "Tool",
+      resourceId: tool.id,
+      after: { reportId: report.id, issueType: parsed.data.issueType }
+    });
 
-  return NextResponse.json({ id: report.id, ok: true }, { status: 201 });
+    return NextResponse.json({ id: report.id, ok: true }, { status: 201 });
+  } catch (error) {
+    return jsonError(error);
+  }
 }

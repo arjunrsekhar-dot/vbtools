@@ -66,7 +66,7 @@ export async function readAdminState(): Promise<AdminState> {
         category: payload.category || "Other",
         submitted: payload.submitted || submission.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
         logo: payload.logo || (payload.name || "?").charAt(0).toUpperCase(),
-        color: payload.color || "#287b5e",
+        color: payload.color || "#5992C6",
         description: payload.description || "",
         website: payload.website || "#",
         kind: payload.kind || (submission.kind === "TOOL_UPDATE" ? "Listing update" : "New listing"),
@@ -77,8 +77,11 @@ export async function readAdminState(): Promise<AdminState> {
         bestFor: payload.bestFor,
         subcategory: payload.subcategory,
         tags: payload.tags,
+        platforms: payload.platforms,
         logoUrl: payload.logoUrl,
-        screenshotUrls: payload.screenshotUrls
+        screenshotUrls: payload.screenshotUrls,
+        couponCode: payload.couponCode,
+        discountDetails: payload.discountDetails
       };
     }),
     tools: tools.map((tool) => ({
@@ -103,6 +106,7 @@ export async function readAdminState(): Promise<AdminState> {
       bestFor: tool.bestFor,
       subcategory: tool.subcategory,
       tags: parseList(tool.tagsJson),
+      platforms: parseList(tool.platformsJson) as ManagedTool["platforms"],
       logoUrl: tool.logoUrl,
       screenshotUrls: parseList(tool.screenshotsJson),
       couponCode: tool.couponCode || undefined,
@@ -183,6 +187,7 @@ export async function writeAdminState(state: AdminState) {
         bestFor: tool.bestFor || existing?.bestFor || "Teams and individuals",
         subcategory: tool.subcategory || existing?.subcategory || "Software",
         tagsJson: JSON.stringify(tool.tags || parseList(existing?.tagsJson)),
+        platformsJson: JSON.stringify(tool.platforms?.length ? tool.platforms : parseList(existing?.platformsJson)),
         screenshotsJson: JSON.stringify(tool.screenshotUrls || parseList(existing?.screenshotsJson)),
         couponCode: tool.couponCode ?? existing?.couponCode,
         discountDetails: tool.discountDetails ?? existing?.discountDetails
@@ -197,7 +202,6 @@ export async function writeAdminState(state: AdminState) {
           prosJson: JSON.stringify(["Reviewed by Voltbean"]),
           consJson: JSON.stringify(["Community feedback is still growing"]),
           useCasesJson: JSON.stringify([tool.bestFor || `Use ${tool.name}`]),
-          platformsJson: JSON.stringify(["Web"]),
           alternativesJson: "[]"
         }
       });

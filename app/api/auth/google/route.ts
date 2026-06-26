@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   createCodeChallenge,
   GOOGLE_NEXT_COOKIE,
+  GOOGLE_CONNECT_COOKIE,
   GOOGLE_STATE_COOKIE,
   GOOGLE_VERIFIER_COOKIE,
   googleRedirectUri,
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
   const state = randomUrlSafeValue();
   const verifier = randomUrlSafeValue(64);
   const requestUrl = new URL(request.url);
+  const connect = requestUrl.searchParams.get("connect") === "google";
   const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authorizationUrl.searchParams.set("client_id", clientId);
   authorizationUrl.searchParams.set("redirect_uri", googleRedirectUri(request.url));
@@ -35,5 +37,6 @@ export async function GET(request: Request) {
   response.cookies.set(GOOGLE_STATE_COOKIE, state, oauthCookieOptions);
   response.cookies.set(GOOGLE_VERIFIER_COOKIE, verifier, oauthCookieOptions);
   response.cookies.set(GOOGLE_NEXT_COOKIE, safeNextPath(requestUrl.searchParams.get("next")), oauthCookieOptions);
+  response.cookies.set(GOOGLE_CONNECT_COOKIE, connect ? "1" : "", oauthCookieOptions);
   return response;
 }
